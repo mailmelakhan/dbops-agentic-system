@@ -5,8 +5,17 @@ import streamlit as st
 
 from dbops_frontend.api.base import ApiError, ServiceUnavailable
 from dbops_frontend.clients import health_client
-from dbops_frontend.format import BAND_COLOR, Band, days_band, days_label, plain_error, score_band, score_label
-from dbops_frontend.views.common import service_banner, switch_to
+from dbops_frontend.format import (
+    BAND_COLOR,
+    Band,
+    days_band,
+    days_label,
+    md_inline,
+    plain_error,
+    score_band,
+    score_label,
+)
+from dbops_frontend.views.common import api_error_banner, service_banner, switch_to
 
 COLUMNS = ["Database", "Engine", "Class", "Score", "Days to full", "Alarms"]
 ALARM_STATE = {"ALARM": "⛔ ALARM", "OK": "✅ OK", "INSUFFICIENT_DATA": "⚠ INSUFFICIENT_DATA"}
@@ -50,9 +59,9 @@ def render_alarms(identifier: str) -> None:
         if not alarms:
             st.caption("No open alarms.")
         for a in alarms:
-            st.markdown(f"{ALARM_STATE.get(a['state'], a['state'])} · **{a['name']}** · "
-                        f"{a['metric']} threshold {a['threshold']} · since {a['since']}")
-            st.caption(a["description"])
+            st.markdown(f"{ALARM_STATE.get(a['state'], a['state'])} · **{md_inline(a['name'])}** · "
+                        f"{md_inline(a['metric'])} threshold {a['threshold']} · since {a['since']}")
+            st.caption(md_inline(a["description"]))
 
 
 def _actions() -> None:
@@ -90,6 +99,9 @@ def render() -> None:
         fleet = client.fleet()
     except ServiceUnavailable:
         service_banner("health-analytics")
+        return
+    except ApiError as err:
+        api_error_banner("health-analytics", err)
         return
 
     cols = st.columns(4)

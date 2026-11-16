@@ -1,6 +1,7 @@
 import streamlit as st
 
-from dbops_frontend.format import risk_badge_html
+from dbops_frontend.api.base import ApiError
+from dbops_frontend.format import plain_error, risk_badge_html
 
 _STYLES = """<style>
 [data-testid="stMetricValue"], [data-testid="stTable"], [data-testid="stMarkdownContainer"] table {
@@ -15,6 +16,10 @@ def inject_styles() -> None:
 
 def service_banner(service: str) -> None:
     st.error(f"{service} unavailable, showing nothing rather than stale data")
+
+
+def api_error_banner(service: str, err: ApiError) -> None:
+    st.error(f"{service} returned an error: {plain_error(err)}")
 
 
 def risk_badge(tier: str) -> None:

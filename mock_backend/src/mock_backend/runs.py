@@ -1,6 +1,7 @@
 """Scripted agent runs, replayed lazily from the clock."""
 
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -59,14 +60,19 @@ _PROPOSALS = [  # keyword, change type, database
 ]
 
 
+def _mentions(text: str, keyword: str) -> bool:
+    """Whole-word match, allowing simple inflections: "tags", "failed"; not "percentage" or "failover"."""
+    return re.search(rf"\b{keyword}(s|es|ed|ing)?\b", text) is not None
+
+
 def pick_script(message: str, role: Role) -> list[ScriptStep]:
     text = message.lower()
     started = [ScriptStep(0.0, {"type": "run_started"})]
-    if "fail" in text:
+    if _mentions(text, "fail"):
         return [*started, *_text("Looking into that… "),
                 ScriptStep(OTHER_DELAY, {"type": "run_failed", "error": "Bedrock throttled the request"})]
     for keyword, change_type, db in _PROPOSALS:
-        if keyword not in text:
+        if not _mentions(text, keyword):
             continue
         steps = [*started, *_text(f"Checking {db} first. "),
                  *_describe(db, "db.r6g.large" if db == "prod-orders-db" else "db.r6g.xlarge", "aurora-postgresql")]

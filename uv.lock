@@ -227,7 +227,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pyyaml", specifier = ">=6" },
-    { name = "streamlit", specifier = ">=1.50,<2" },
+    { name = "streamlit", specifier = ">=1.67,<2" },
 ]
 
 [[package]]

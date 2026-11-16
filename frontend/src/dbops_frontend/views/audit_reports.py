@@ -7,8 +7,8 @@ import streamlit as st
 
 from dbops_frontend.api.base import ApiError, ServiceUnavailable
 from dbops_frontend.clients import agent_client
-from dbops_frontend.format import escape_md, plain_error
-from dbops_frontend.views.common import service_banner
+from dbops_frontend.format import escape_md, md_inline, plain_error
+from dbops_frontend.views.common import api_error_banner, service_banner
 
 VIEWS = ["Audit log", "Reports"]
 COLUMNS = ["Time", "User", "Action / tool", "Database", "Result", "CR"]
@@ -62,6 +62,9 @@ def _audit_log() -> None:
     except ServiceUnavailable:
         service_banner("agent-api")
         return
+    except ApiError as err:
+        api_error_banner("agent-api", err)
+        return
     filters = _filters(facets)
     signature = tuple(sorted(filters.items()))
     if st.session_state.get("audit_filter_sig") != signature:
@@ -112,7 +115,7 @@ def render_reports_table(reports: list[dict]) -> None:
     for r in reports:
         with st.container(border=True):
             st.markdown(f"**{escape_md(r['title'])}** · {r['kind']} · {report_status_label(r)}")
-            st.caption(f"Generated {r['created_at']} by {r['created_by']}")
+            st.caption(f"Generated {r['created_at']} by {md_inline(r['created_by'])}")
             if r["status"] != "ready":
                 continue
             cols = st.columns(max(len(r["formats"]), 1) + 3)
@@ -132,6 +135,9 @@ def _reports_body(polling: bool) -> None:
     except ServiceUnavailable:
         service_banner("agent-api")
         return
+    except ApiError as err:
+        api_error_banner("agent-api", err)
+        return
     render_reports_table(reports)
     if polling and not any(r["status"] == "generating" for r in reports):
         st.rerun()  # everything finished: a full rerun stops the polling fragment
@@ -142,6 +148,9 @@ def _reports() -> None:
         generating = any(r["status"] == "generating" for r in agent_client().list_reports())
     except ServiceUnavailable:
         service_banner("agent-api")
+        return
+    except ApiError as err:
+        api_error_banner("agent-api", err)
         return
     st.fragment(_reports_body, run_every=3 if generating else None)(generating)
 

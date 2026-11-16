@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "DB Ops Streamlit frontend (part 1)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "streamlit>=1.50,<2",
+    "streamlit>=1.67,<2",
     "httpx>=0.28",
     "pandas>=2.2",
     "bcrypt>=4.2",

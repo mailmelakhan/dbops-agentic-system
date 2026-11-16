@@ -4,7 +4,7 @@ import streamlit as st
 
 from dbops_frontend.api.base import ApiError, ServiceUnavailable
 from dbops_frontend.clients import agent_client, executor_client
-from dbops_frontend.format import cr_title, diff_html, escape_md, plain_error, status_label
+from dbops_frontend.format import cr_title, diff_html, escape_md, md_inline, plain_error, status_label
 from dbops_frontend.permissions import (
     can_cancel,
     can_decide,
@@ -12,12 +12,12 @@ from dbops_frontend.permissions import (
     can_retry_cleanup,
     can_withdraw,
 )
-from dbops_frontend.views.common import risk_badge, service_banner
+from dbops_frontend.views.common import api_error_banner, risk_badge, service_banner
 
 VIEWS = {
     "Pending": ["pending"],
     "In progress": ["approved", "executing", "scheduled", "failed_cleanup_pending"],
-    "Done": ["succeeded", "failed", "rejected"],
+    "Done": ["succeeded", "failed", "rejected", "cancelled", "withdrawn"],
 }
 SCHEDULE, APPLY_NOW = "Schedule for next window", "Apply now"
 STEP_ICON = {"done": "✅", "active": "⏳", "pending": "▫️", "failed": "⛔"}
@@ -92,7 +92,7 @@ def _confirm_dialog(confirm: dict) -> None:
 
 def _header(cr: dict) -> None:
     risk_badge(cr["risk_tier"])
-    st.caption(f"Requested by {cr['requested_by']} via {cr['requested_via']} at {cr['created_at']}")
+    st.caption(f"Requested by {md_inline(cr['requested_by'])} via {cr['requested_via']} at {cr['created_at']}")
     st.markdown(diff_html(cr["diff"]), unsafe_allow_html=True)
     st.markdown(f"**Impact:** {escape_md(cr['impact'])}")
     st.markdown("**Rollback plan**\n" + "\n".join(f"- {escape_md(step)}" for step in cr["rollback_plan"]))
@@ -148,7 +148,7 @@ def _in_progress_card(cr: dict) -> None:
     user, cid = _user(), cr["id"]
     with st.expander(f"{cr_title(cr)} · {cr['risk_tier']}", expanded=cr["status"] == "failed_cleanup_pending"):
         risk_badge(cr["risk_tier"])
-        st.caption(f"{status_label(cr['status'])} · requested by {cr['requested_by']}")
+        st.caption(f"{status_label(cr['status'])} · requested by {md_inline(cr['requested_by'])}")
         _tracker(cr)
         if cr["status"] == "failed_cleanup_pending":
             st.error("Cleanup failed: the temporary restore instance is still running", icon="⛔")
@@ -171,9 +171,9 @@ def _done_card(cr: dict) -> None:
     with st.expander(f"{cr_title(cr)} · {cr['risk_tier']}"):
         st.markdown(f"{status_label(cr['status'])} · {escape_md(cr['summary'])}")
         if cr.get("status_reason"):
-            st.caption(f"Reason: {cr['status_reason']}")
+            st.caption(f"Reason: {md_inline(cr['status_reason'])}")
         if cr.get("result"):
-            st.caption(cr["result"]["message"])
+            st.caption(md_inline(cr["result"]["message"]))
         st.markdown(diff_html(cr["diff"]), unsafe_allow_html=True)
         if can_propose_rollback(_user(), cr) and st.button("Propose rollback", key=f"rollback_{cid}"):
             try:
@@ -196,6 +196,9 @@ def _list(view: str) -> list[dict] | None:
         return agent_client().list_change_requests(VIEWS[view])
     except ServiceUnavailable:
         service_banner("agent-api")
+        return None
+    except ApiError as err:
+        api_error_banner("agent-api", err)
         return None
 
 

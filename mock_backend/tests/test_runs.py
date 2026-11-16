@@ -143,3 +143,19 @@ def test_truncate_result():
     out, truncated = truncate_result({"rows": "x" * 30_000})
     assert truncated and len(json.dumps(out)) < 21_000
     assert truncate_result({"a": 1}) == ({"a": 1}, False)
+
+
+def test_keywords_match_whole_words(client, clock):
+    c = client("sam")
+    _, run = start(c, "what's the failover status and storage percentage?")
+    clock.advance(30)
+    page = events(c, run)
+    assert page["run_status"] == "completed"
+    assert not [e for e in page["events"] if e["type"] == "change_proposed"]
+
+
+def test_plural_keywords_still_match(client, clock):
+    c = client("sam")
+    _, run = start(c, "please update the tags on prod-orders-db")
+    clock.advance(30)
+    assert [e for e in events(c, run)["events"] if e["type"] == "change_proposed"]

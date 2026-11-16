@@ -10,10 +10,11 @@ import streamlit as st
 from dbops_frontend.api.base import ApiError, ServiceUnavailable
 from dbops_frontend.chat_state import ActiveRun, Turn, apply_events, build_turn, turn_from_message
 from dbops_frontend.clients import agent_client
-from dbops_frontend.format import plain_error, risk_badge_html, tool_step_title
-from dbops_frontend.views.common import service_banner, switch_to
+from dbops_frontend.format import md_inline, plain_error, risk_badge_html, tool_step_title
+from dbops_frontend.views.common import api_error_banner, service_banner, switch_to
 
 UNREACHABLE = "agent-api unreachable, retrying…"
+RUN_GONE = {400, 401, 403, 404, 422}  # the run is not ours or no longer exists: stop polling it
 
 
 def _runs() -> dict[str, ActiveRun]:
@@ -43,7 +44,14 @@ def _sidebar(agent) -> None:
     with st.sidebar:
         st.divider()
         if st.button("+ New chat", key="chat_new", width="stretch"):
-            st.session_state["chat_conv_id"] = agent.create_conversation()
+            try:
+                st.session_state["chat_conv_id"] = agent.create_conversation()
+            except ServiceUnavailable:
+                st.warning(UNREACHABLE)
+                return
+            except ApiError as err:
+                st.warning(plain_error(err))
+                return
             st.rerun()
         try:
             conversations = agent.list_conversations()
@@ -54,7 +62,10 @@ def _sidebar(agent) -> None:
             kind = "primary" if conv["id"] == current else "secondary"
             if st.button(conv["title"], key=f"chat_conv_{conv['id']}", type=kind, width="stretch"):
                 st.session_state["chat_conv_id"] = conv["id"]
-                _adopt_running(agent, conv["id"])
+                try:
+                    _adopt_running(agent, conv["id"])
+                except (ServiceUnavailable, ApiError):
+                    pass  # history and polling show the problem on the rerun
                 st.rerun()
 
 
@@ -66,7 +77,7 @@ def _proposal(agent, proposal: dict, key_prefix: str) -> None:
             proposal = {**proposal, "change_type": cr["change_type"], "risk_tier": cr["risk_tier"]}
         except (ServiceUnavailable, ApiError):
             proposal = {**proposal, "change_type": "change", "risk_tier": None}
-    st.markdown(f"📝 Proposed {proposal['change_type']} → {cr_id}")
+    st.markdown(f"📝 Proposed {md_inline(proposal['change_type'])} → {md_inline(cr_id)}")
     if proposal.get("risk_tier"):
         st.markdown(risk_badge_html(proposal["risk_tier"]), unsafe_allow_html=True)
     if st.button("Open in Approvals", key=f"{key_prefix}_open_{cr_id}"):
@@ -111,9 +122,11 @@ def _live_turn(conv_id: str) -> None:
     except ServiceUnavailable:
         st.warning(UNREACHABLE)
     except ApiError as err:
-        st.warning(plain_error(err))
-        _runs().pop(conv_id, None)
-        return
+        if err.status in RUN_GONE:
+            st.session_state["chat_flash"] = plain_error(err)
+            _runs().pop(conv_id, None)
+            st.rerun()  # full rerun re-enables the input
+        st.warning(UNREACHABLE)  # 5xx / 429: transient, keep the run and keep polling
     render_turn(agent, build_turn(run.events), key_prefix="live")
     if status != "running":
         _runs().pop(conv_id, None)
@@ -133,6 +146,13 @@ def _submit(agent, prompt: str) -> None:
             st.session_state["chat_conv_id"] = conv_id
         _runs()[conv_id] = ActiveRun(agent.start_run(conv_id, prompt))
     except ApiError as err:
+        if err.code == "run_active":
+            try:
+                _adopt_running(agent, conv_id)
+            except (ServiceUnavailable, ApiError):
+                pass
+            if conv_id in _runs():
+                st.rerun()
         st.warning(plain_error(err))
         return
     except ServiceUnavailable:
@@ -144,10 +164,16 @@ def _submit(agent, prompt: str) -> None:
 def render() -> None:
     st.header("Chat")
     agent = agent_client()
+    flash = st.session_state.pop("chat_flash", None)
+    if flash:
+        st.warning(flash)
     try:
         _first_load(agent)
     except ServiceUnavailable:
         service_banner("agent-api")
+        return
+    except ApiError as err:
+        api_error_banner("agent-api", err)
         return
     _sidebar(agent)
 

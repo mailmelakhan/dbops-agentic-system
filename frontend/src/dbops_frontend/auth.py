@@ -34,7 +34,10 @@ def load_users(path: Path) -> dict[str, dict]:
 def authenticate(users: dict[str, dict], username: str, password: str) -> User | None:
     record = users.get(username)
     hashed = record["password_hash"].encode() if record else _DUMMY_HASH
-    ok = bcrypt.checkpw(password.encode(), hashed)
+    try:
+        ok = bcrypt.checkpw(password.encode(), hashed)
+    except ValueError:  # bcrypt refuses passwords over 72 bytes
+        return None
     if record is None or not ok:
         return None
     return User(record["username"], record["display_name"], Role(record["role"]))

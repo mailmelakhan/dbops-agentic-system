@@ -90,7 +90,7 @@ def tool_step_title(step: dict) -> str:
 
 
 def cr_title(cr: dict) -> str:
-    title = f"{cr['id']} · {cr['change_type']} · {cr['database']['identifier']}"
+    title = f"{cr['id']} · {cr['change_type']} · {md_inline(cr['database']['identifier'])}"
     return f"↩ Rollback of {cr['rollback_of']} · {title}" if cr.get("rollback_of") else title
 
 
@@ -117,3 +117,11 @@ _MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|<>~$])")
 def escape_md(text: str) -> str:
     """Escape markdown so backend-provided text renders literally in st.markdown."""
     return _MD_SPECIAL.sub(r"\\\1", str(text))
+
+
+_MD_INLINE = re.compile(r"([\\`*\[\]<>~|$])")
+
+
+def md_inline(text: str) -> str:
+    """Light escape for labels and captions: neutralises emphasis, code, links and images, keeps - . _ readable."""
+    return _MD_INLINE.sub(r"\\\1", str(text))
