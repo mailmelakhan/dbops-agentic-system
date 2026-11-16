@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from mock_backend import routes_health
+from mock_backend import routes_agent, routes_executor, routes_health
 from mock_backend.clock import Clock, SystemClock
 from mock_backend.errors import install_error_handlers
 from mock_backend.identity import load_roles
@@ -24,6 +24,8 @@ def create_app(users_file: Path, service_token: str, clock: Clock | None = None,
         return {"ok": True}
 
     app.include_router(routes_health.router)
+    app.include_router(routes_agent.router)
+    app.include_router(routes_executor.router)
     return app
 
 
