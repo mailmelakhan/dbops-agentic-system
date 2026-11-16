@@ -6,7 +6,6 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
-
 from mock_backend.app import create_app
 from mock_backend.clock import FakeClock
 

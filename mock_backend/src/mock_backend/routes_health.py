@@ -1,18 +1,17 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 
 from mock_backend.clock import iso
 from mock_backend.errors import ApiProblem
-from mock_backend.identity import Caller, get_caller
-from mock_backend.state import MockState, get_state, now_of
+from mock_backend.identity import CallerDep
+from mock_backend.state import StateDep, now_of
 
 router = APIRouter()
 
 
 @router.get("/fleet")
-def fleet(env: str | None = None, engine: str | None = None,
-          _: Caller = Depends(get_caller), state: MockState = Depends(get_state)):
+def fleet(_: CallerDep, state: StateDep, env: str | None = None, engine: str | None = None):
     with state.lock:
         dbs = [d for d in state.fleet
                if (env is None or d["env"] == env) and (engine is None or d["engine"] == engine)]
@@ -20,7 +19,7 @@ def fleet(env: str | None = None, engine: str | None = None,
 
 
 @router.get("/fleet/summary")
-def summary(_: Caller = Depends(get_caller), state: MockState = Depends(get_state)):
+def summary(_: CallerDep, state: StateDep):
     with state.lock:
         days = [d["storage"]["days_to_full"] for d in state.fleet]
         return {
@@ -33,7 +32,7 @@ def summary(_: Caller = Depends(get_caller), state: MockState = Depends(get_stat
 
 
 @router.get("/fleet/{identifier}/alarms")
-def alarms(identifier: str, _: Caller = Depends(get_caller), state: MockState = Depends(get_state)):
+def alarms(identifier: str, _: CallerDep, state: StateDep):
     with state.lock:
         if not any(d["identifier"] == identifier for d in state.fleet):
             raise ApiProblem(404, "not_found", f"No database {identifier!r}")
@@ -41,7 +40,7 @@ def alarms(identifier: str, _: Caller = Depends(get_caller), state: MockState = 
 
 
 @router.post("/refresh", status_code=202)
-def refresh(request: Request, _: Caller = Depends(get_caller), state: MockState = Depends(get_state)):
+def refresh(request: Request, _: CallerDep, state: StateDep):
     now = now_of(request)
     with state.lock:
         if state.last_refresh is not None and now - state.last_refresh < timedelta(seconds=60):

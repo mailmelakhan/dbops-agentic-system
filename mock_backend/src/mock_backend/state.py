@@ -1,8 +1,9 @@
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Annotated
 
-from fastapi import Request
+from fastapi import Depends, Request
 
 
 @dataclass
@@ -35,3 +36,6 @@ def get_state(request: Request) -> MockState:
 
 def now_of(request: Request) -> datetime:
     return request.app.state.clock.now()
+
+
+StateDep = Annotated[MockState, Depends(get_state)]

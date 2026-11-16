@@ -2,9 +2,10 @@ import hmac
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Annotated
 
 import yaml
-from fastapi import Request
+from fastapi import Depends, Request
 
 from mock_backend.errors import ApiProblem
 
@@ -41,3 +42,6 @@ def get_caller(request: Request) -> Caller:
     if role is None:
         raise ApiProblem(401, "unauthenticated", f"Unknown user {username!r}")
     return Caller(username, role)
+
+
+CallerDep = Annotated[Caller, Depends(get_caller)]
