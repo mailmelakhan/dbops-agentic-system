@@ -193,7 +193,7 @@ def _seed_audit(state: MockState, now: datetime) -> None:
 
     users = ["priya", "arjun", "sam", "rita"]
     dbs = [d["identifier"] for d in state.fleet]
-    for i in range(32):
+    for i in range(48):
         user, tool, db = users[i % 4], _TOOLS[i % len(_TOOLS)], dbs[(i * 5) % len(dbs)]
         audit_row(state, now=now - timedelta(hours=7.5 * i + 0.5), user=user, action="chat.tool_call", tool=tool,
                   database=db, result="error" if i % 11 == 10 else "ok",
