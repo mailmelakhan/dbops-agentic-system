@@ -8,6 +8,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "mock-backend",
+    "dbops-frontend",
     "httpx>=0.28",
     "pytest>=8.3",
     "ruff>=0.8",
@@ -22,9 +23,10 @@ package = false
 
 [tool.uv.sources]
 mock-backend = { workspace = true }
+dbops-frontend = { workspace = true }
 
 [tool.uv.workspace]
-members = ["mock_backend"]
+members = ["mock_backend", "frontend"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "mock_backend/tests", "frontend/tests"]
