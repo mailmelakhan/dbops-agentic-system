@@ -1,0 +1,183 @@
+openapi: 3.1.0
+info:
+  title: DB Ops executor
+  version: 0.1.0
+  description: >
+    The only service with write credentials. Approves, rejects, withdraws, cancels and retries cleanup of
+    change requests. Progress is read through agent-api GET /change-requests/{id}.
+    Spec: docs/superpowers/specs/2026-11-14-db-ops-frontend-design.md §7.2.
+security:
+  - dbopsUser: []
+    serviceToken: []
+paths:
+  /change-requests/{id}/approve:
+    post:
+      summary: Approve and start executing in the background
+      description: >
+        Re-checks status (409 invalid_state), the self-approval rule (403 self_approval), role (403 forbidden_role),
+        the maintenance-window rule (422 window_override_reason_required) and drift against the diff's before values
+        (409 drifted). mode is only meaningful for HIGH changes.
+      operationId: approve
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveBody" }
+      responses:
+        "202":
+          description: "Execution started: status is executing, or scheduled for HIGH next_window"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /change-requests/{id}/reject:
+    post:
+      summary: Reject a pending change request
+      operationId: reject
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReasonBody" }
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /change-requests/{id}/withdraw:
+    post:
+      summary: Withdraw your own pending change request
+      operationId: withdraw
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Withdrawn
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /change-requests/{id}/cancel:
+    post:
+      summary: Cancel a scheduled HIGH change (PRIVILEGED)
+      operationId: cancel
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReasonBody" }
+      responses:
+        "202":
+          description: Cancel requested; the CR becomes cancelled once AWS confirms
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /change-requests/{id}/retry-cleanup:
+    post:
+      summary: Retry cleanup of a stuck restore test (PRIVILEGED)
+      operationId: retryCleanup
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "202":
+          description: Retry started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+components:
+  securitySchemes:
+    dbopsUser:
+      type: apiKey
+      in: header
+      name: X-DBOps-User
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-DBOps-Service-Token
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    Unauthenticated:
+      description: "unauthenticated"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: "forbidden_role, self_approval or not_requester"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: "not_found"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: "invalid_state or drifted"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unprocessable:
+      description: "window_override_reason_required or validation_error"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+    ApproveBody:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [now, next_window] }
+        override_reason: { type: [string, "null"] }
+    ReasonBody:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1 }
+    StatusResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }

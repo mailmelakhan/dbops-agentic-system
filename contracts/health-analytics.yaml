@@ -1,0 +1,170 @@
+openapi: 3.1.0
+info:
+  title: DB Ops health-analytics
+  version: 0.1.0
+  description: >
+    Fleet health from scheduled polling. Score bands for colouring are >=80 green, 50-79 amber, <50 red.
+    Days to full: <=14 red, 15-30 amber, otherwise neutral.
+    Spec: docs/superpowers/specs/2026-11-14-db-ops-frontend-design.md §7.3.
+security:
+  - dbopsUser: []
+    serviceToken: []
+paths:
+  /fleet:
+    get:
+      summary: Fleet health
+      operationId: getFleet
+      parameters:
+        - { name: env, in: query, required: false, schema: { type: string } }
+        - { name: engine, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Fleet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Fleet" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /fleet/summary:
+    get:
+      summary: Fleet summary numbers
+      operationId: getFleetSummary
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FleetSummary" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /fleet/{identifier}/alarms:
+    get:
+      summary: One database's alarms
+      operationId: getAlarms
+      parameters:
+        - { name: identifier, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Alarms
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Alarm" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: "not_found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /refresh:
+    post:
+      summary: Ask for a re-poll now (rate-limited to once a minute)
+      operationId: refresh
+      responses:
+        "202":
+          description: Refresh requested
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429":
+          description: "rate_limited"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /reports/fleet-health:
+    post:
+      summary: Start generating a fleet health report; status is read through agent-api GET /reports/{id}
+      operationId: startFleetHealthReport
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                env: { type: [string, "null"] }
+      responses:
+        "202":
+          description: Generating
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report_id]
+                properties:
+                  report_id: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+components:
+  securitySchemes:
+    dbopsUser:
+      type: apiKey
+      in: header
+      name: X-DBOps-User
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-DBOps-Service-Token
+  responses:
+    Unauthenticated:
+      description: "unauthenticated"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+    Storage:
+      type: object
+      required: [free_gb, trend_gb_per_day, days_to_full]
+      properties:
+        free_gb: { type: number }
+        trend_gb_per_day: { type: number }
+        days_to_full: { type: [integer, "null"] }
+    FleetDatabase:
+      type: object
+      required: [identifier, kind, engine, instance_class, env, region, health_score, storage, open_alarms]
+      properties:
+        identifier: { type: string }
+        kind: { type: string, enum: [instance, cluster] }
+        engine: { type: string }
+        instance_class: { type: string }
+        env: { type: string }
+        region: { type: string }
+        health_score: { type: integer, minimum: 0, maximum: 100 }
+        storage: { $ref: "#/components/schemas/Storage" }
+        open_alarms: { type: integer, minimum: 0 }
+    Fleet:
+      type: object
+      required: [as_of, databases]
+      properties:
+        as_of: { type: string, format: date-time }
+        databases:
+          type: array
+          items: { $ref: "#/components/schemas/FleetDatabase" }
+    FleetSummary:
+      type: object
+      required: [as_of, total, unhealthy, under_30_days_to_full, open_alarms]
+      properties:
+        as_of: { type: string, format: date-time }
+        total: { type: integer }
+        unhealthy: { type: integer }
+        under_30_days_to_full: { type: integer }
+        open_alarms: { type: integer }
+    Alarm:
+      type: object
+      required: [name, metric, state, since, threshold, description]
+      properties:
+        name: { type: string }
+        metric: { type: string }
+        state: { type: string, enum: [OK, ALARM, INSUFFICIENT_DATA] }
+        since: { type: string, format: date-time }
+        threshold: { type: number }
+        description: { type: string }

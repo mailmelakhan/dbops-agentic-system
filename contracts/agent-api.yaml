@@ -1,0 +1,604 @@
+openapi: 3.1.0
+info:
+  title: DB Ops agent-api
+  version: 0.1.0
+  description: >
+    Conversations, agent runs, change requests (read and propose), audit log and reports.
+    Spec: docs/superpowers/specs/2026-11-14-db-ops-frontend-design.md §7.1.
+security:
+  - dbopsUser: []
+    serviceToken: []
+paths:
+  /conversations:
+    get:
+      summary: The caller's conversations
+      operationId: listConversations
+      responses:
+        "200":
+          description: Conversations, most recently updated first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Conversation" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      summary: Create a conversation
+      operationId: createConversation
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IdResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /conversations/{id}/messages:
+    get:
+      summary: Past turns, for rebuilding the chat after a refresh
+      operationId: listMessages
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Messages, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Message" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /conversations/{id}/runs:
+    post:
+      summary: Start a run
+      operationId: startRun
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, minLength: 1 }
+      responses:
+        "201":
+          description: Run started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run_id]
+                properties:
+                  run_id: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "run_active: the conversation already has an active run"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /runs:
+    get:
+      summary: Find runs, e.g. one still running after a browser refresh
+      operationId: listRuns
+      parameters:
+        - { name: conversation_id, in: query, required: true, schema: { type: string } }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/RunStatus" }
+      responses:
+        "200":
+          description: Matching runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Run" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /runs/{run_id}/events:
+    get:
+      summary: Run events with seq > after_seq
+      operationId: getRunEvents
+      parameters:
+        - { name: run_id, in: path, required: true, schema: { type: string } }
+        - { name: after_seq, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: Events and the run status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventsPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /runs/{run_id}/cancel:
+    post:
+      summary: Ask the run to stop (idempotent)
+      operationId: cancelRun
+      parameters:
+        - { name: run_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "202":
+          description: Cancel requested
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /change-requests:
+    get:
+      summary: List change requests, newest first
+      operationId: listChangeRequests
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Comma-separated list of statuses
+          schema: { type: string, examples: ["pending", "scheduled,failed_cleanup_pending"] }
+        - { name: database, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Change requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ChangeRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /change-requests/{id}:
+    get:
+      summary: One full change request
+      operationId: getChangeRequest
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: The change request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /change-requests/{id}/rollback:
+    post:
+      summary: Create a pending rollback CR for a succeeded CR
+      operationId: proposeRollback
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          description: Rollback CR created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [change_request_id]
+                properties:
+                  change_request_id: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/InvalidState" }
+  /audit:
+    get:
+      summary: Audit rows, newest first, with cursor paging
+      operationId: listAudit
+      parameters:
+        - { name: user, in: query, required: false, schema: { type: string } }
+        - { name: tool, in: query, required: false, schema: { type: string } }
+        - { name: database, in: query, required: false, schema: { type: string } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: One page of audit rows
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /audit/facets:
+    get:
+      summary: Distinct users, tools and databases for filter dropdowns
+      operationId: auditFacets
+      responses:
+        "200":
+          description: Facets
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditFacets" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /reports:
+    get:
+      summary: Reports, newest first
+      operationId: listReports
+      responses:
+        "200":
+          description: Reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Report" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /reports/{id}:
+    get:
+      summary: One report's metadata
+      operationId: getReport
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Report metadata
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Report" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /reports/{id}/download:
+    get:
+      summary: Report file bytes
+      operationId: downloadReport
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - name: format
+          in: query
+          required: true
+          schema: { type: string, enum: [csv, md] }
+      responses:
+        "200":
+          description: File bytes
+          content:
+            text/csv:
+              schema: { type: string }
+            text/markdown:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "not_ready: the report is not ready"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /reports/change-history:
+    post:
+      summary: Start generating a change-history report in the background
+      operationId: startChangeHistoryReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuditFilters" }
+      responses:
+        "202":
+          description: Generating
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReportIdResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+components:
+  securitySchemes:
+    dbopsUser:
+      type: apiKey
+      in: header
+      name: X-DBOps-User
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-DBOps-Service-Token
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    Unauthenticated:
+      description: "unauthenticated: missing or wrong service token, or unknown user"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: "forbidden_role: the caller's role is too low"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: "not_found"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InvalidState:
+      description: "invalid_state: the resource is not in a state that allows this"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationError:
+      description: "validation_error: the request body or parameters are invalid"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+    IdResponse:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+    ReportIdResponse:
+      type: object
+      required: [report_id]
+      properties:
+        report_id: { type: string }
+    Timestamp:
+      type: string
+      format: date-time
+    Conversation:
+      type: object
+      required: [id, title, created_at, updated_at]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    ToolStep:
+      type: object
+      required: [tool_call_id, name, args, status, result, truncated, duration_ms]
+      properties:
+        tool_call_id: { type: string }
+        name: { type: string }
+        args: { type: object }
+        status: { type: string, enum: [ok, error] }
+        result: {}
+        truncated: { type: boolean }
+        duration_ms: { type: integer, minimum: 0 }
+    Message:
+      type: object
+      required: [role, text, tool_steps, change_request_ids, run_id]
+      properties:
+        role: { type: string, enum: [user, assistant] }
+        text: { type: string }
+        tool_steps:
+          type: array
+          items: { $ref: "#/components/schemas/ToolStep" }
+        change_request_ids:
+          type: array
+          items: { type: string }
+        run_id: { type: [string, "null"] }
+    RunStatus:
+      type: string
+      enum: [running, completed, failed, cancelled]
+    Run:
+      type: object
+      required: [run_id, conversation_id, status, started_at]
+      properties:
+        run_id: { type: string }
+        conversation_id: { type: string }
+        status: { $ref: "#/components/schemas/RunStatus" }
+        started_at: { $ref: "#/components/schemas/Timestamp" }
+    RiskTier:
+      type: string
+      enum: [LOW, MEDIUM, HIGH]
+    ChangeType:
+      type: string
+      enum: [modify_tags, create_snapshot, delete_snapshot, restore_test, modify_instance_class]
+    EventBase:
+      type: object
+      required: [seq, type, ts]
+      properties:
+        seq: { type: integer, minimum: 1 }
+        type: { type: string }
+        ts: { $ref: "#/components/schemas/Timestamp" }
+    RunEvent:
+      oneOf:
+        - allOf:
+            - $ref: "#/components/schemas/EventBase"
+            - properties:
+                type: { const: run_started }
+        - allOf:
+            - $ref: "#/components/schemas/EventBase"
+            - required: [text]
+              properties:
+                type: { const: text_delta }
+                text: { type: string }
+        - allOf:
+            - $ref: "#/components/schemas/EventBase"
+            - required: [tool_call_id, name, args]
+              properties:
+                type: { const: tool_call_started }
+                tool_call_id: { type: string }
+                name: { type: string }
+                args: { type: object }
+        - allOf:
+            - $ref: "#/components/schemas/EventBase"
+            - required: [tool_call_id, status, result, duration_ms]
+              properties:
+                type: { const: tool_call_finished }
+                tool_call_id: { type: string }
+                status: { type: string, enum: [ok, error] }
+                result: {}
+                duration_ms: { type: integer, minimum: 0 }
+                truncated: { type: boolean }
+        - allOf:
+            - $ref: "#/components/schemas/EventBase"
+            - required: [change_request_id, change_type, risk_tier]
+              properties:
+                type: { const: change_proposed }
+                change_request_id: { type: string }
+                change_type: { $ref: "#/components/schemas/ChangeType" }
+                risk_tier: { $ref: "#/components/schemas/RiskTier" }
+        - allOf:
+            - $ref: "#/components/schemas/EventBase"
+            - properties:
+                type: { const: run_completed }
+        - allOf:
+            - $ref: "#/components/schemas/EventBase"
+            - required: [error]
+              properties:
+                type: { const: run_failed }
+                error: { type: string }
+        - allOf:
+            - $ref: "#/components/schemas/EventBase"
+            - properties:
+                type: { const: run_cancelled }
+    EventsPage:
+      type: object
+      required: [events, run_status]
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/RunEvent" }
+        run_status: { $ref: "#/components/schemas/RunStatus" }
+    DatabaseRef:
+      type: object
+      required: [identifier, kind, engine, region]
+      properties:
+        identifier: { type: string }
+        kind: { type: string, enum: [instance, cluster] }
+        engine: { type: string }
+        region: { type: string }
+    DiffEntry:
+      type: object
+      required: [field, before, after]
+      properties:
+        field: { type: string }
+        before: {}
+        after: {}
+    MaintenanceWindow:
+      type: object
+      required: [required, window, inside_now, next_start]
+      properties:
+        required: { type: boolean }
+        window: { type: [string, "null"] }
+        inside_now: { type: [boolean, "null"] }
+        next_start: { type: [string, "null"], format: date-time }
+    Approval:
+      type: object
+      required: [decision, decided_by, decided_at, mode, override_reason, reason]
+      properties:
+        decision: { type: string, enum: [approved, rejected] }
+        decided_by: { type: string }
+        decided_at: { $ref: "#/components/schemas/Timestamp" }
+        mode: { type: [string, "null"], enum: [now, next_window, null] }
+        override_reason: { type: [string, "null"] }
+        reason: { type: [string, "null"] }
+    ProgressStep:
+      type: object
+      required: [step, state, at]
+      properties:
+        step: { type: string }
+        state: { type: string, enum: [done, active, pending, failed] }
+        at: { type: [string, "null"], format: date-time }
+    CRResult:
+      type: object
+      required: [outcome, message, report_id]
+      properties:
+        outcome: { type: string, enum: [succeeded, failed] }
+        message: { type: string }
+        report_id: { type: [string, "null"] }
+    CRStatus:
+      type: string
+      enum: [pending, approved, rejected, withdrawn, executing, scheduled, succeeded, failed, cancelled,
+             failed_cleanup_pending]
+    ChangeRequest:
+      type: object
+      required: [id, change_type, risk_tier, database, requested_by, requested_via, conversation_id, created_at,
+                 summary, params, diff, impact, rollback_plan, maintenance_window, status, approval, progress,
+                 result, rollback_of, status_reason]
+      properties:
+        id: { type: string }
+        change_type: { $ref: "#/components/schemas/ChangeType" }
+        risk_tier: { $ref: "#/components/schemas/RiskTier" }
+        database: { $ref: "#/components/schemas/DatabaseRef" }
+        requested_by: { type: string }
+        requested_via: { type: string, enum: [chat, approvals] }
+        conversation_id: { type: [string, "null"] }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        summary: { type: string }
+        params: { type: object }
+        diff:
+          type: array
+          items: { $ref: "#/components/schemas/DiffEntry" }
+        impact: { type: string }
+        rollback_plan:
+          type: array
+          items: { type: string }
+        maintenance_window: { $ref: "#/components/schemas/MaintenanceWindow" }
+        status: { $ref: "#/components/schemas/CRStatus" }
+        approval:
+          oneOf:
+            - $ref: "#/components/schemas/Approval"
+            - type: "null"
+        progress:
+          type: array
+          items: { $ref: "#/components/schemas/ProgressStep" }
+        result:
+          oneOf:
+            - $ref: "#/components/schemas/CRResult"
+            - type: "null"
+        rollback_of: { type: [string, "null"] }
+        status_reason: { type: [string, "null"] }
+    AuditRow:
+      type: object
+      required: [id, ts, user, action, tool, database, result, change_request_id, detail]
+      properties:
+        id: { type: string }
+        ts: { $ref: "#/components/schemas/Timestamp" }
+        user: { type: string }
+        action: { type: string }
+        tool: { type: [string, "null"] }
+        database: { type: [string, "null"] }
+        result: { type: string, enum: [ok, error, denied] }
+        change_request_id: { type: [string, "null"] }
+        detail: { type: string }
+    AuditPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AuditRow" }
+        next_cursor: { type: [string, "null"] }
+    AuditFacets:
+      type: object
+      required: [users, tools, databases]
+      properties:
+        users: { type: array, items: { type: string } }
+        tools: { type: array, items: { type: string } }
+        databases: { type: array, items: { type: string } }
+    AuditFilters:
+      type: object
+      properties:
+        user: { type: string }
+        tool: { type: string }
+        database: { type: string }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+    Report:
+      type: object
+      required: [id, kind, title, status, error, created_at, created_by, formats]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [restore_test, fleet_health, change_history] }
+        title: { type: string }
+        status: { type: string, enum: [generating, ready, failed] }
+        error: { type: [string, "null"] }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        created_by: { type: string }
+        formats:
+          type: array
+          items: { type: string, enum: [csv, md] }

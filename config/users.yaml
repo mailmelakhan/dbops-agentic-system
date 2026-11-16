@@ -1,0 +1,18 @@
+# Hardcoded demo users (spec §5). Demo password for all: dbops-demo
+users:
+  - username: priya
+    display_name: Priya
+    role: PRIVILEGED
+    password_hash: "$2b$12$lE7WzMJhnuOubCce8bPDwudGj0Wz2YaKWcB2pt9gFdB.tQ42JcxjK"
+  - username: arjun
+    display_name: Arjun
+    role: PRIVILEGED
+    password_hash: "$2b$12$pPGxY0OclxfxFT/n/v6Q7eRkho4uJuI4vMdtz1455n5gW2RqOknFG"
+  - username: sam
+    display_name: Sam
+    role: SAFE-WRITE
+    password_hash: "$2b$12$zKrhY4W3doUr3YNl9.Cpjumgq.q8XL4CHMKax6n6aS9m2mDHQJQxO"
+  - username: rita
+    display_name: Rita
+    role: READ
+    password_hash: "$2b$12$/97KTpW3gQGx7LqptPZqo.3AHbzrCwOpwIu3SjF9r.V5AbguB1i0m"
