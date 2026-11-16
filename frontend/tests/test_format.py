@@ -94,3 +94,10 @@ def test_plain_error_copy():
     assert plain_error(ApiError(429, "rate_limited", "")) == "A refresh was already requested in the last minute."
     assert plain_error(ApiError(409, "run_active", "")) == "This conversation already has a run in progress."
     assert plain_error(ApiError(500, "boom", "Something broke")) == "Something broke (boom)"
+
+
+def test_escape_md_renders_literally():
+    from dbops_frontend.format import escape_md
+
+    assert escape_md("**bold** [x](y) <b>") == r"\*\*bold\*\* \[x\]\(y\) \<b\>"
+    assert escape_md("~5–10 min downtime") == r"\~5–10 min downtime"

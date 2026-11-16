@@ -2,6 +2,7 @@
 
 import html
 import json
+import re
 from enum import StrEnum
 
 from dbops_frontend.api.base import ApiError
@@ -108,3 +109,11 @@ ERROR_COPY = {
 
 def plain_error(err: ApiError) -> str:
     return ERROR_COPY.get(err.code, f"{err.message} ({err.code})")
+
+
+_MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|<>~$])")
+
+
+def escape_md(text: str) -> str:
+    """Escape markdown so backend-provided text renders literally in st.markdown."""
+    return _MD_SPECIAL.sub(r"\\\1", str(text))
