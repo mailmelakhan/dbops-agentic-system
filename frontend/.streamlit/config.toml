@@ -1,0 +1,35 @@
+[server]
+enableStaticServing = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+font = "Inter, sans-serif"
+headingFont = "'Space Grotesk', sans-serif"
+codeFont = "'JetBrains Mono', monospace"
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter-latin-400-normal.woff2"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter-latin-600-normal.woff2"
+weight = 600
+
+[[theme.fontFaces]]
+family = "Space Grotesk"
+url = "app/static/fonts/space-grotesk-latin-500-normal.woff2"
+weight = 500
+
+[[theme.fontFaces]]
+family = "Space Grotesk"
+url = "app/static/fonts/space-grotesk-latin-700-normal.woff2"
+weight = 700
+
+[[theme.fontFaces]]
+family = "JetBrains Mono"
+url = "app/static/fonts/jetbrains-mono-latin-400-normal.woff2"
+weight = 400

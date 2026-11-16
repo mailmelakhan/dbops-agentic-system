@@ -79,3 +79,56 @@ def frontend_env(monkeypatch, users_file):
         monkeypatch.setenv("DBOPS_USERS_FILE", str(users_file))
 
     return apply
+
+
+FRONTEND = __import__("pathlib").Path(__file__).resolve().parents[1]
+
+
+def _view_script(module: str) -> None:
+    import importlib
+
+    importlib.import_module(f"dbops_frontend.views.{module}").render()
+
+
+@pytest.fixture
+def view_app(mock_server, frontend_env, monkeypatch):
+    """AppTest around one view's render(), logged in, against a live mock (time_scale=0 unless base_url given)."""
+    from dbops_frontend.auth import Role, User
+    from streamlit.testing.v1 import AppTest
+
+    roles = dict(USERS)
+
+    def make(module: str, *, logged_in: str, base_url: str | None = None, agent_url: str | None = None,
+             health_url: str | None = None, session: dict | None = None) -> AppTest:
+        url = base_url or mock_server()
+        frontend_env(url)
+        if agent_url:
+            monkeypatch.setenv("AGENT_API_URL", agent_url)
+        if health_url:
+            monkeypatch.setenv("HEALTH_URL", health_url)
+        at = AppTest.from_function(_view_script, kwargs={"module": module}, default_timeout=15)
+        at.session_state["user"] = User(logged_in, logged_in.title(), Role(roles[logged_in]))
+        for key, value in (session or {}).items():
+            at.session_state[key] = value
+        at.base_url = url
+        return at
+
+    return make
+
+
+@pytest.fixture
+def shell(mock_server, frontend_env):
+    """AppTest around frontend/app.py against a live mock."""
+    from dbops_frontend.auth import Role, User
+    from streamlit.testing.v1 import AppTest
+
+    roles = dict(USERS)
+
+    def make(logged_in: str | None = None) -> AppTest:
+        frontend_env(mock_server())
+        at = AppTest.from_file(str(FRONTEND / "app.py"), default_timeout=15)
+        if logged_in:
+            at.session_state["user"] = User(logged_in, logged_in.title(), Role(roles[logged_in]))
+        return at
+
+    return make
