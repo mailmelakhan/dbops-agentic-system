@@ -84,10 +84,10 @@ def frontend_env(monkeypatch, users_file):
 FRONTEND = __import__("pathlib").Path(__file__).resolve().parents[1]
 
 
-def _view_script(module: str) -> None:
+def _view_script(module: str, func: str = "render", args: tuple = ()) -> None:
     import importlib
 
-    importlib.import_module(f"dbops_frontend.views.{module}").render()
+    getattr(importlib.import_module(f"dbops_frontend.views.{module}"), func)(*args)
 
 
 @pytest.fixture
@@ -99,14 +99,16 @@ def view_app(mock_server, frontend_env, monkeypatch):
     roles = dict(USERS)
 
     def make(module: str, *, logged_in: str, base_url: str | None = None, agent_url: str | None = None,
-             health_url: str | None = None, session: dict | None = None) -> AppTest:
+             health_url: str | None = None, session: dict | None = None, func: str = "render",
+             args: tuple = ()) -> AppTest:
         url = base_url or mock_server()
         frontend_env(url)
         if agent_url:
             monkeypatch.setenv("AGENT_API_URL", agent_url)
         if health_url:
             monkeypatch.setenv("HEALTH_URL", health_url)
-        at = AppTest.from_function(_view_script, kwargs={"module": module}, default_timeout=15)
+        at = AppTest.from_function(_view_script, kwargs={"module": module, "func": func, "args": args},
+                                   default_timeout=15)
         at.session_state["user"] = User(logged_in, logged_in.title(), Role(roles[logged_in]))
         for key, value in (session or {}).items():
             at.session_state[key] = value
