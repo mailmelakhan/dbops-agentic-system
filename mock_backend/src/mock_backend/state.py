@@ -24,10 +24,12 @@ class MockState:
 def advance(state: MockState, now: datetime, time_scale: float) -> None:
     """Bring every timed behaviour up to `now`. Called under state.lock before each request."""
     from mock_backend.changes import advance_change_requests
+    from mock_backend.reports import advance_reports
     from mock_backend.runs import advance_runs
 
     advance_runs(state, now, time_scale)
     advance_change_requests(state, now, time_scale)
+    advance_reports(state, now, time_scale)
 
 
 def get_state(request: Request) -> MockState:

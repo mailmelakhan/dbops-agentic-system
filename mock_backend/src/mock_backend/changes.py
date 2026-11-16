@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from mock_backend.clock import iso
 from mock_backend.errors import ApiProblem
 from mock_backend.identity import Caller, Role
+from mock_backend.reports import restore_test_builder, start_report
 from mock_backend.state import MockState
 
 RISK_TIER = {
@@ -222,6 +223,9 @@ def _due(start: datetime, seconds: float, now: datetime, time_scale: float) -> d
 
 def _finish(state: MockState, cr: dict, now: datetime, outcome: str, message: str) -> None:
     cr["result"] = {"outcome": outcome, "message": message, "report_id": None}
+    if cr["change_type"] == "restore_test":
+        cr["result"]["report_id"] = start_report(state, kind="restore_test", title=f"Restore test {cr['id']}",
+                                                 created_by="executor", now=now, build=restore_test_builder(cr))
 
 
 def _advance_executing(state: MockState, cr: dict, now: datetime, time_scale: float) -> None:
@@ -286,3 +290,41 @@ def advance_change_requests(state: MockState, now: datetime, time_scale: float) 
             _finish(state, cr, at, "succeeded", "Cleanup retried; the temporary instance was deleted")
             audit_row(state, now=at, user="executor", action="change.cleanup_retried", database=db,
                       change_request_id=cr["id"])
+
+
+ROLLBACK_TYPE = {"modify_tags": "modify_tags", "create_snapshot": "delete_snapshot",
+                 "modify_instance_class": "modify_instance_class"}
+
+
+def _rollback_details(cr: dict) -> dict:
+    db = cr["database"]["identifier"]
+    swapped = [{"field": d["field"], "before": d["after"], "after": d["before"]} for d in cr["diff"]]
+    params = cr["params"]
+    match cr["change_type"]:
+        case "modify_tags":
+            return {"params": {"before": params.get("after", {}), "after": params.get("before", {})},
+                    "diff": swapped, "summary": f"Roll back {cr['id']}: re-apply the previous tags on {db}"}
+        case "create_snapshot":
+            snap = params.get("snapshot_identifier")
+            return {"params": {"snapshot_identifier": snap}, "diff": swapped,
+                    "summary": f"Roll back {cr['id']}: delete snapshot {snap}"}
+        case "modify_instance_class":
+            return {"params": {"from_class": params["to_class"], "to_class": params["from_class"]}, "diff": swapped,
+                    "summary": f"Roll back {cr['id']}: resize {db} back to {params['from_class']}"}
+    raise ValueError(cr["change_type"])
+
+
+def propose_rollback(state: MockState, cr_id: str, caller: Caller, now: datetime) -> dict:
+    cr = get_cr(state, cr_id)
+    _require_status(cr, "succeeded")
+    rollback_type = ROLLBACK_TYPE.get(cr["change_type"])
+    if rollback_type is None:
+        raise ApiProblem(409, "invalid_state", f"{cr['change_type']} changes have no rollback")
+    if any(c["rollback_of"] == cr_id and c["status"] == "pending" for c in state.change_requests.values()):
+        raise ApiProblem(409, "invalid_state", f"A rollback of {cr_id} is already pending")
+    needed = required_role(RISK_TIER[rollback_type])
+    if caller.role.rank < needed.rank:
+        _deny(state, cr, caller, now, "change.rollback_denied", "forbidden_role",
+              f"Role {caller.role} can't propose a {RISK_TIER[rollback_type]} rollback (needs {needed})")
+    return new_change_request(state, change_type=rollback_type, database=cr["database"], requested_by=caller.username,
+                              now=now, rollback_of=cr_id, requested_via="approvals", **_rollback_details(cr))

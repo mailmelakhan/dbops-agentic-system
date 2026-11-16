@@ -1,9 +1,11 @@
 import uuid
 
-from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Request, Response
+from pydantic import BaseModel, ConfigDict, Field
 
-from mock_backend.changes import get_cr, public
+from mock_backend import reports
+from mock_backend.audit import audit_facets, query_audit
+from mock_backend.changes import get_cr, propose_rollback, public
 from mock_backend.clock import iso
 from mock_backend.errors import ApiProblem
 from mock_backend.identity import CallerDep
@@ -115,3 +117,64 @@ def cancel_run(run_id: str, request: Request, caller: CallerDep, state: StateDep
         if run["status"] == "running" and run["cancel_at"] is None:
             run["cancel_at"] = now
         return {}
+
+
+@router.post("/change-requests/{id}/rollback", status_code=201)
+def rollback(id: str, request: Request, caller: CallerDep, state: StateDep):
+    with state.lock:
+        return {"change_request_id": propose_rollback(state, id, caller, now_of(request))["id"]}
+
+
+@router.get("/audit")
+def audit(_: CallerDep, state: StateDep, request: Request, user: str | None = None, tool: str | None = None,
+          database: str | None = None, to: str | None = None, limit: int = 50, cursor: str | None = None):
+    from_ = request.query_params.get("from")
+    with state.lock:
+        return query_audit(state.audit, user=user, tool=tool, database=database, from_=from_, to=to, limit=limit,
+                           cursor=cursor)
+
+
+@router.get("/audit/facets")
+def facets(_: CallerDep, state: StateDep):
+    with state.lock:
+        return audit_facets(state.audit)
+
+
+class AuditFilters(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    user: str | None = None
+    tool: str | None = None
+    database: str | None = None
+    from_: str | None = Field(default=None, alias="from")
+    to: str | None = None
+
+
+@router.get("/reports")
+def list_reports(_: CallerDep, state: StateDep):
+    with state.lock:
+        items = [reports.public_report(r) for r in state.reports.values()]
+    return sorted(items, key=lambda r: (r["created_at"], r["id"]), reverse=True)
+
+
+@router.get("/reports/{id}")
+def get_report(id: str, _: CallerDep, state: StateDep):
+    with state.lock:
+        return reports.public_report(reports.get_report(state, id))
+
+
+@router.get("/reports/{id}/download")
+def download_report(id: str, format: str, _: CallerDep, state: StateDep):
+    with state.lock:
+        body = reports.report_file(state, id, format)
+    media = "text/csv" if format == "csv" else "text/markdown"
+    return Response(body, media_type=media, headers={"Content-Disposition": f'attachment; filename="{id}.{format}"'})
+
+
+@router.post("/reports/change-history", status_code=202)
+def start_change_history(body: AuditFilters, request: Request, caller: CallerDep, state: StateDep):
+    filters = {"user": body.user, "tool": body.tool, "database": body.database, "from": body.from_, "to": body.to}
+    with state.lock:
+        report_id = reports.start_report(state, kind="change_history", title="Change history",
+                                         created_by=caller.username, now=now_of(request),
+                                         build=reports.change_history_builder(state, filters))
+    return {"report_id": report_id}

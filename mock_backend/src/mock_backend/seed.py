@@ -58,6 +58,8 @@ def _alarms(now: datetime) -> dict[str, list[dict]]:
 def seed_state(now: datetime) -> MockState:
     state = MockState(fleet=_fleet(), alarms=_alarms(now), as_of=now)
     _seed_change_requests(state, now)
+    _seed_audit(state, now)
+    _seed_reports(state, now)
     return state
 
 
@@ -180,3 +182,39 @@ def _seed_change_requests(state: MockState, now: datetime) -> None:
                  params={"from_class": "db.t3.large", "to_class": "db.t3.xlarge"})
     cr["maintenance_window"]["inside_now"] = True
     state.next_cr_number = 145
+
+
+_TOOLS = ["rds.describe_db_instances", "cloudwatch.get_metric_statistics", "rds.describe_events",
+          "cloudwatch.describe_alarms"]
+
+
+def _seed_audit(state: MockState, now: datetime) -> None:
+    from mock_backend.changes import audit_row
+
+    users = ["priya", "arjun", "sam", "rita"]
+    dbs = [d["identifier"] for d in state.fleet]
+    for i in range(32):
+        user, tool, db = users[i % 4], _TOOLS[i % len(_TOOLS)], dbs[(i * 5) % len(dbs)]
+        audit_row(state, now=now - timedelta(hours=7.5 * i + 0.5), user=user, action="chat.tool_call", tool=tool,
+                  database=db, result="error" if i % 11 == 10 else "ok",
+                  detail=f'{{"db_instance_identifier": "{db}"}}')
+
+
+def _seed_reports(state: MockState, now: datetime) -> None:
+    from mock_backend.reports import fleet_health_builder, restore_test_builder
+
+    def ready(report_id, kind, title, by, hours_ago, content):
+        state.reports[report_id] = {"id": report_id, "kind": kind, "title": title, "status": "ready", "error": None,
+                                    "created_at": iso(now - timedelta(hours=hours_ago)), "created_by": by,
+                                    "formats": sorted(content), "_started": now, "_build": None,
+                                    "_content": content}
+
+    restore_cr = state.change_requests["CR-0137"]
+    ready("rep-seed-restore", "restore_test", "Restore test CR-0137", "executor", 23,
+          restore_test_builder(restore_cr)())
+    restore_cr["result"]["report_id"] = "rep-seed-restore"
+    ready("rep-seed-fleet", "fleet_health", "Fleet health (all envs)", "rita", 12, fleet_health_builder(state, None)())
+    state.reports["rep-seed-failed"] = {
+        "id": "rep-seed-failed", "kind": "change_history", "title": "Change history (last 30 days)",
+        "status": "failed", "error": "Timed out reading CloudWatch", "created_at": iso(now - timedelta(hours=6)),
+        "created_by": "arjun", "formats": [], "_started": now, "_build": None, "_content": {}}

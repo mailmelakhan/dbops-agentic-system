@@ -1,7 +1,9 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, Request
+from pydantic import BaseModel
 
+from mock_backend import reports
 from mock_backend.clock import iso
 from mock_backend.errors import ApiProblem
 from mock_backend.identity import CallerDep
@@ -48,3 +50,17 @@ def refresh(request: Request, _: CallerDep, state: StateDep):
         state.last_refresh = now
         state.as_of = now
         return {}
+
+
+class FleetReportBody(BaseModel):
+    env: str | None = None
+
+
+@router.post("/reports/fleet-health", status_code=202)
+def start_fleet_report(request: Request, caller: CallerDep, state: StateDep, body: FleetReportBody | None = None):
+    env = body.env if body else None
+    title = f"Fleet health ({env})" if env else "Fleet health (all envs)"
+    with state.lock:
+        report_id = reports.start_report(state, kind="fleet_health", title=title, created_by=caller.username,
+                                         now=now_of(request), build=reports.fleet_health_builder(state, env))
+    return {"report_id": report_id}
