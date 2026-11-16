@@ -1,0 +1,39 @@
+# Part 1: frontend + mock backend. Later parts replace mock-backend with agent-api, executor and health-analytics.
+name: db-ops
+
+services:
+  mock-backend:
+    build:
+      context: .
+      dockerfile: mock_backend/Dockerfile
+    environment:
+      DBOPS_USERS_FILE: /config/users.yaml
+      DBOPS_SERVICE_TOKEN: ${DBOPS_SERVICE_TOKEN:?set DBOPS_SERVICE_TOKEN in .env}
+      MOCK_TIME_SCALE: ${MOCK_TIME_SCALE:-1.0}
+    volumes:
+      - ./config/users.yaml:/config/users.yaml:ro
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      AGENT_API_URL: http://mock-backend:8000
+      EXECUTOR_URL: http://mock-backend:8000
+      HEALTH_URL: http://mock-backend:8000
+      DBOPS_USERS_FILE: /config/users.yaml
+      DBOPS_SERVICE_TOKEN: ${DBOPS_SERVICE_TOKEN:?set DBOPS_SERVICE_TOKEN in .env}
+    volumes:
+      - ./config/users.yaml:/config/users.yaml:ro
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      mock-backend:
+        condition: service_healthy
