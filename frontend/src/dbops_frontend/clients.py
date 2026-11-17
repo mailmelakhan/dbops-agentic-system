@@ -17,9 +17,9 @@ def agent_client() -> AgentApi:
     return AgentApi(s.agent_api_url, _username(), s.service_token)
 
 
-def health_client() -> HealthApi:
+def health_client(timeout: float = 5.0) -> HealthApi:
     s = load_settings()
-    return HealthApi(s.health_url, _username(), s.service_token)
+    return HealthApi(s.health_url, _username(), s.service_token, timeout=timeout)
 
 
 def executor_client() -> ExecutorApi:

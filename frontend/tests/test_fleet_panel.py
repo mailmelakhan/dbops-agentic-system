@@ -62,3 +62,33 @@ def test_empty_fleet(panel, monkeypatch):
 def test_alarms_empty(panel):
     at = panel(func="render_alarms", args=("dev-orders-db",)); at.run()
     assert at.caption[0].value == "Alarms · dev-orders-db" and at.caption[1].value == "No open alarms."
+
+
+# ---- Final review Important #1: a hung health-analytics must not stall every page ----
+
+FLEET = {"as_of": "2026-11-16T10:00:00Z", "databases": []}
+
+
+def test_panel_uses_short_timeout(panel, monkeypatch):
+    seen = []
+    monkeypatch.setattr(HealthApi, "fleet", lambda self, **k: seen.append(self._timeout) or FLEET)
+    at = panel()
+    at.run()
+    assert seen == [1.0]
+
+
+def test_backoff_after_unreachable(panel, monkeypatch):
+    from dbops_frontend.api.base import ServiceUnavailable
+
+    calls = []
+
+    def down(self, **k):
+        calls.append(1)
+        raise ServiceUnavailable("health-analytics")
+
+    monkeypatch.setattr(HealthApi, "fleet", down)
+    at = panel()
+    at.run()
+    at.run()
+    assert len(calls) == 1   # second rerun within the back-off makes no call
+    assert at.error[0].value == "health-analytics unavailable, showing nothing rather than stale data"

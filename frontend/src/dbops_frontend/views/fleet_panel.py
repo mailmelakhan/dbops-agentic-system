@@ -1,6 +1,7 @@
 """Fleet panel: every database, worst first, on the right of every page. Data from health-analytics only."""
 
 import html
+import time
 
 import streamlit as st
 
@@ -11,13 +12,16 @@ from dbops_frontend.format import md_inline, plain_error, status_badge_html
 from dbops_frontend.views.common import api_error_banner, service_banner
 
 OPEN_KEY = "fleet_open"
+DOWN_KEY = "fleet_down_until"
+TIMEOUT_S = 1.0  # the panel is drawn before every page: a hung service must not stall the page
+BACKOFF_S = 10.0  # after health-analytics is unreachable, show the banner without calling again for this long
 ALARM_STATE = {"ALARM": "⛔ ALARM", "OK": "✅ OK", "INSUFFICIENT_DATA": "⚠ INSUFFICIENT_DATA"}
 
 
 def render_alarms(identifier: str) -> None:
     st.caption(f"Alarms · {md_inline(identifier)}")
     try:
-        alarms = health_client().alarms(identifier)
+        alarms = health_client(TIMEOUT_S).alarms(identifier)
     except ServiceUnavailable:
         service_banner("health-analytics")
         return
@@ -41,9 +45,13 @@ def _toggle_open(identifier: str) -> None:
 
 @st.fragment(run_every=10)
 def render() -> None:
+    if time.monotonic() < st.session_state.get(DOWN_KEY, 0.0):
+        service_banner("health-analytics")
+        return
     try:
-        fleet = health_client().fleet()
+        fleet = health_client(TIMEOUT_S).fleet()
     except ServiceUnavailable:
+        st.session_state[DOWN_KEY] = time.monotonic() + BACKOFF_S
         service_banner("health-analytics")
         return
     except ApiError as err:
