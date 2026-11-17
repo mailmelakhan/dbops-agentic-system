@@ -46,10 +46,21 @@ def days_label(days: int | None) -> str:
     return f"{icon} {days} d" if icon else f"{days} d"
 
 
-def risk_badge_html(tier: str) -> str:
-    bg, fg = RISK_STYLE.get(tier, ("#6b7280", WHITE))
+STATUS_STYLE = {"CRITICAL": ("#dc2626", WHITE), "WARNING": ("#f59e0b", DARK_TEXT), "OK": ("#16a34a", WHITE)}
+_UNKNOWN_STYLE = ("#6b7280", WHITE)
+
+
+def _badge_html(text: str, bg: str, fg: str) -> str:
     return (f'<span style="background:{bg};color:{fg};font-weight:700;padding:2px 8px;border-radius:4px;'
-            f'font-size:0.8rem;letter-spacing:0.04em">{html.escape(tier)}</span>')
+            f'font-size:0.8rem;letter-spacing:0.04em">{html.escape(text)}</span>')
+
+
+def risk_badge_html(tier: str) -> str:
+    return _badge_html(tier, *RISK_STYLE.get(tier, _UNKNOWN_STYLE))
+
+
+def status_badge_html(status: str) -> str:
+    return _badge_html(status, *STATUS_STYLE.get(status, _UNKNOWN_STYLE))
 
 
 def _value(v) -> str:
