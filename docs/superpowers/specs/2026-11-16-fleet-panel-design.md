@@ -1,7 +1,7 @@
 # DB Ops: Fleet Panel Replaces the Health Page: Design
 
 Date: 2026-11-16
-Status: Draft, awaiting approval
+Status: Approved 2026-11-16
 Size: small change to part 1 (frontend only). Amends [2026-11-14-db-ops-frontend-design.md](2026-11-14-db-ops-frontend-design.md): §2 (goals), §8.1, §8.3 and §8.6.
 
 ## Intent and why
@@ -75,5 +75,5 @@ These are the score and days-to-full bands already in spec §7.3. "Any open alar
 - Tests: the panel renders on each page, the sort order, the status rule, the hidden state, and an unreachable health-analytics.
 - Removing `views/health.py`, or reusing its parts (alarms rendering, bands) in the panel.
 
-## Related, not part of this change
-`config/users.yaml` and spec §5 now use new demo users (lakhan, ankit, geeta, amit). The mock's seeded change requests, the README and some tests still name the old users. The plan should fold in that rename unless it's handled separately.
+## Also in this change: demo user rename (user)
+`config/users.yaml` and spec §5 now name the demo users lakhan (PRIVILEGED, approver), ankit (PRIVILEGED, DBA Lead), geeta (SAFE-WRITE) and amit (READ). Every other place that still uses the old names (priya → lakhan, arjun → ankit, sam → geeta, rita → amit) is updated to match: the mock's seed data, the README, and the tests.
