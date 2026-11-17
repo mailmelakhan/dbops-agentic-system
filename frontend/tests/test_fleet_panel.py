@@ -15,7 +15,7 @@ def panel(view_app):
 
 
 def rows(at):
-    return [b.label for b in at.button if b.key.startswith("fleet_row_")]
+    return [b.label.strip("`") for b in at.button if b.key.startswith("fleet_row_")]
 
 
 def test_header_and_as_of(panel):
@@ -92,3 +92,20 @@ def test_backoff_after_unreachable(panel, monkeypatch):
     at.run()
     assert len(calls) == 1   # second rerun within the back-off makes no call
     assert at.error[0].value == "health-analytics unavailable, showing nothing rather than stale data"
+
+
+def test_row_labels_are_monospace(panel):
+    at = panel()
+    at.run()
+    labels = [b.label for b in at.button if b.key.startswith("fleet_row_")]
+    assert labels and all(lbl.startswith("`") and lbl.endswith("`") for lbl in labels)
+
+
+def test_alarm_fields_escaped(panel, monkeypatch):
+    alarm = {"name": "a", "metric": "m", "state": "ALARM", "threshold": "*90*", "since": "[x](http://e.x)",
+             "description": "d"}
+    monkeypatch.setattr(HealthApi, "alarms", lambda self, ident: [alarm])
+    at = panel(func="render_alarms", args=("prod-orders-db",))
+    at.run()
+    line = next(m.value for m in at.markdown if m.value.startswith("⛔ ALARM"))
+    assert r"\*90\*" in line and r"\[x\]" in line

@@ -65,6 +65,7 @@ The demo password for every user is `dbops-demo`. Change the hashes in `config/u
 - Approving **CR-0139** always reports drift. A restore test of `legacy-reports-db` always ends with cleanup failed.
 - CR-0135 stays scheduled until someone cancels it; CR-0136 is waiting for a cleanup retry.
 - The fleet panel shows 6 of 14 databases needing attention; legacy-reports-db and prod-orders-db are CRITICAL.
+- The old Health page is gone; a bookmarked /health URL shows "page not found" and opens Chat.
 
 ## Tests
 

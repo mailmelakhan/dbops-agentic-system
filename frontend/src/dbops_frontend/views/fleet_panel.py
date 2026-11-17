@@ -32,7 +32,7 @@ def render_alarms(identifier: str) -> None:
         st.caption("No open alarms.")
     for a in alarms:
         st.markdown(f"{ALARM_STATE.get(a['state'], a['state'])} · **{md_inline(a['name'])}** · "
-                    f"{md_inline(a['metric'])} threshold {a['threshold']} · since {a['since']}")
+                    f"{md_inline(a['metric'])} threshold {md_inline(a['threshold'])} · since {md_inline(a['since'])}")
         st.caption(md_inline(a["description"]))
 
 
@@ -67,7 +67,7 @@ def render() -> None:
     st.caption(f"Data as of {fleet['as_of']}")
     for db in sort_fleet(databases):
         ident = db["identifier"]
-        st.button(ident, key=f"fleet_row_{ident}", width="stretch", on_click=_toggle_open, args=(ident,))
+        st.button(f"`{ident}`", key=f"fleet_row_{ident}", width="stretch", on_click=_toggle_open, args=(ident,))
         st.markdown(f"{status_badge_html(db_status(db))} {html.escape(status_reason(db))}", unsafe_allow_html=True)
         if st.session_state.get(OPEN_KEY) == ident:
             with st.container(border=True):
