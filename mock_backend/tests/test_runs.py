@@ -17,7 +17,7 @@ def events(c, run_id, after=0):
 
 
 def test_run_plays_back_contiguous_events(client, clock, contract):
-    c = client("priya")
+    c = client("lakhan")
     _, run = start(c, "how is prod-orders-db?")
     assert [e["type"] for e in events(c, run)["events"]] == ["run_started"]
     clock.advance(30)
@@ -31,7 +31,7 @@ def test_run_plays_back_contiguous_events(client, clock, contract):
 
 
 def test_after_seq_returns_only_newer(client, clock):
-    c = client("priya")
+    c = client("lakhan")
     _, run = start(c, "hi")
     clock.advance(30)
     newer = events(c, run, after=3)["events"]
@@ -39,25 +39,25 @@ def test_after_seq_returns_only_newer(client, clock):
 
 
 def test_second_run_while_active_is_409(client):
-    c = client("priya")
+    c = client("lakhan")
     conv, _ = start(c, "hi")
     r = c.post(f"/conversations/{conv}/runs", json={"message": "again"})
     assert (r.status_code, r.json()["error"]["code"]) == (409, "run_active")
 
 
 def test_snapshot_proposal_creates_pending_cr(client, clock):
-    c = client("sam")
+    c = client("geeta")
     conv, run = start(c, "take a snapshot of prod-orders-db")
     clock.advance(30)
     prop = next(e for e in events(c, run)["events"] if e["type"] == "change_proposed")
     assert (prop["change_type"], prop["risk_tier"]) == ("create_snapshot", "LOW")
     cr = c.get(f"/change-requests/{prop['change_request_id']}").json()
     assert (cr["status"], cr["requested_by"], cr["requested_via"], cr["conversation_id"]) == (
-        "pending", "sam", "chat", conv)
+        "pending", "geeta", "chat", conv)
 
 
 def test_read_user_cannot_propose(client, clock):
-    c = client("rita")
+    c = client("amit")
     _, run = start(c, "resize prod-orders-db")
     clock.advance(30)
     evs = events(c, run)["events"]
@@ -66,14 +66,14 @@ def test_read_user_cannot_propose(client, clock):
 
 
 def test_safe_write_cannot_propose_resize(client, clock):
-    c = client("sam")
+    c = client("geeta")
     _, run = start(c, "resize prod-orders-db")
     clock.advance(30)
     assert not [e for e in events(c, run)["events"] if e["type"] == "change_proposed"]
 
 
 def test_cancel_mid_run(client, clock):
-    c = client("priya")
+    c = client("lakhan")
     _, run = start(c, "how is the fleet?")
     clock.advance(0.5)
     assert c.post(f"/runs/{run}/cancel").status_code == 202
@@ -84,7 +84,7 @@ def test_cancel_mid_run(client, clock):
 
 
 def test_failed_run(client, clock):
-    c = client("priya")
+    c = client("lakhan")
     _, run = start(c, "please fail")
     clock.advance(30)
     page = events(c, run)
@@ -92,7 +92,7 @@ def test_failed_run(client, clock):
 
 
 def test_messages_and_title_after_completion(client, clock, contract):
-    c = client("sam")
+    c = client("geeta")
     conv, run = start(c, "take a snapshot of prod-orders-db")
     clock.advance(30)
     events(c, run)
@@ -106,7 +106,7 @@ def test_messages_and_title_after_completion(client, clock, contract):
 
 
 def test_new_conversation_title(client, contract):
-    c = client("sam")
+    c = client("geeta")
     conv = c.post("/conversations").json()["id"]
     body = c.get("/conversations").json()
     contract.check("agent-api", "get", "/conversations", 200, body)
@@ -114,7 +114,7 @@ def test_new_conversation_title(client, contract):
 
 
 def test_running_run_lookup(client, clock, contract):
-    c = client("priya")
+    c = client("lakhan")
     conv, run = start(c, "hi")
     body = c.get("/runs", params={"conversation_id": conv, "status": "running"}).json()
     contract.check("agent-api", "get", "/runs", 200, body)
@@ -124,14 +124,14 @@ def test_running_run_lookup(client, clock, contract):
 
 
 def test_conversations_are_per_user(client):
-    conv, run = start(client("sam"), "hi")
-    assert conv not in {x["id"] for x in client("priya").get("/conversations").json()}
-    assert client("priya").get(f"/conversations/{conv}/messages").status_code == 404
-    assert client("priya").get(f"/runs/{run}/events").status_code == 404
+    conv, run = start(client("geeta"), "hi")
+    assert conv not in {x["id"] for x in client("lakhan").get("/conversations").json()}
+    assert client("lakhan").get(f"/conversations/{conv}/messages").status_code == 404
+    assert client("lakhan").get(f"/runs/{run}/events").status_code == 404
 
 
 def test_tool_calls_are_audited(app, client, clock):
-    c = client("priya")
+    c = client("lakhan")
     _, run = start(c, "how is prod-orders-db?")
     clock.advance(30)
     events(c, run)
@@ -146,7 +146,7 @@ def test_truncate_result():
 
 
 def test_keywords_match_whole_words(client, clock):
-    c = client("sam")
+    c = client("geeta")
     _, run = start(c, "what's the failover status and storage percentage?")
     clock.advance(30)
     page = events(c, run)
@@ -155,7 +155,7 @@ def test_keywords_match_whole_words(client, clock):
 
 
 def test_plural_keywords_still_match(client, clock):
-    c = client("sam")
+    c = client("geeta")
     _, run = start(c, "please update the tags on prod-orders-db")
     clock.advance(30)
     assert [e for e in events(c, run)["events"] if e["type"] == "change_proposed"]

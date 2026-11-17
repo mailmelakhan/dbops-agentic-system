@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.mark.parametrize("module", ["health", "chat", "approvals", "audit_reports"])
 def test_wrong_service_token_shows_banner_not_traceback(view_app, monkeypatch, module):
-    at = view_app(module, logged_in="priya")
+    at = view_app(module, logged_in="lakhan")
     monkeypatch.setenv("DBOPS_SERVICE_TOKEN", "wrong-token")
     at.run()
     assert not at.exception
@@ -24,7 +24,7 @@ def test_wrong_service_token_shows_banner_not_traceback(view_app, monkeypatch, m
 
 
 def test_audit_reports_view_wrong_token(view_app, monkeypatch):
-    at = view_app("audit_reports", logged_in="priya", session={"audit_view": "Reports"})
+    at = view_app("audit_reports", logged_in="lakhan", session={"audit_view": "Reports"})
     monkeypatch.setenv("DBOPS_SERVICE_TOKEN", "wrong-token")
     at.run()
     assert not at.exception and at.error
@@ -34,7 +34,7 @@ def test_audit_reports_view_wrong_token(view_app, monkeypatch):
 
 def _start_live_run(view_app, mock_server):
     url = mock_server(time_scale=1.0)
-    at = view_app("chat", logged_in="priya", base_url=url)
+    at = view_app("chat", logged_in="lakhan", base_url=url)
     at.run()
     at.chat_input[0].set_value("how is the fleet?").run()
     return at
@@ -63,7 +63,7 @@ def test_chat_drops_run_on_404_and_reenables_input(view_app, mock_server, monkey
 
 def test_chat_run_active_adopts_running_run(view_app, mock_server):
     url = mock_server(time_scale=1.0)
-    at = view_app("chat", logged_in="priya", base_url=url)
+    at = view_app("chat", logged_in="lakhan", base_url=url)
     at.run()
     at.chat_input[0].set_value("how is the fleet?").run()
     conv = at.session_state["chat_conv_id"]
@@ -83,7 +83,7 @@ def test_cr_title_escapes_markdown():
 
 def _hostile(cr):
     return {**cr, "database": {**cr["database"], "identifier": "[link](http://evil.example)"},
-            "status_reason": "![x](http://evil.example/p.png)", "requested_by": "**sam**",
+            "status_reason": "![x](http://evil.example/p.png)", "requested_by": "**geeta**",
             "result": {"outcome": "succeeded", "message": "[approve here](http://evil.example)", "report_id": None}}
 
 
@@ -91,7 +91,7 @@ def test_hostile_cr_fields_render_literally(view_app, monkeypatch):
     real = AgentApi.list_change_requests
     monkeypatch.setattr(AgentApi, "list_change_requests",
                         lambda self, *a, **k: [_hostile(c) for c in real(self, *a, **k)])
-    at = view_app("approvals", logged_in="priya", session={"approvals_view": "Done"})
+    at = view_app("approvals", logged_in="lakhan", session={"approvals_view": "Done"})
     at.run()
     rendered = [e.label for e in at.expander] + [c.value for c in at.caption] + [m.value for m in at.markdown]
     assert rendered and not any(re.search(r"(?<!\\)\]\(http", r) for r in rendered)
@@ -100,7 +100,7 @@ def test_hostile_cr_fields_render_literally(view_app, monkeypatch):
 # ---- Important #4: cancelled and withdrawn CRs stay visible ----
 
 def test_done_shows_withdrawn_and_cancelled(view_app):
-    at = view_app("approvals", logged_in="priya", session={"approvals_view": "Done"})
+    at = view_app("approvals", logged_in="lakhan", session={"approvals_view": "Done"})
     at.run()
     assert any(e.label.startswith("CR-0138") for e in at.expander)
 
@@ -108,7 +108,7 @@ def test_done_shows_withdrawn_and_cancelled(view_app):
 # ---- upgraded minor: long password must not crash login ----
 
 def test_long_password_is_rejected_not_crash(users_file):
-    assert authenticate(load_users(users_file), "priya", "x" * 100) is None
+    assert authenticate(load_users(users_file), "lakhan", "x" * 100) is None
 
 
 # ---- upgraded minor: Docker images install the locked versions ----

@@ -55,5 +55,5 @@ def test_contract_requires_both_identity_headers(name):
 def test_users_file_has_four_demo_users():
     users = yaml.safe_load((ROOT / "config/users.yaml").read_text())["users"]
     assert {u["username"]: u["role"] for u in users} == {
-        "priya": "PRIVILEGED", "arjun": "PRIVILEGED", "sam": "SAFE-WRITE", "rita": "READ"}
+        "lakhan": "PRIVILEGED", "ankit": "PRIVILEGED", "geeta": "SAFE-WRITE", "amit": "READ"}
     assert all(bcrypt.checkpw(b"dbops-demo", u["password_hash"].encode()) for u in users)

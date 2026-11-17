@@ -10,49 +10,49 @@ from dbops_frontend.permissions import (
     rollback_tier,
 )
 
-SAM, PRIYA, ARJUN, RITA = (User(n, n, r) for n, r in [("sam", Role.SAFE_WRITE), ("priya", Role.PRIVILEGED),
-                                                      ("arjun", Role.PRIVILEGED), ("rita", Role.READ)])
+GEETA, LAKHAN, ANKIT, AMIT = (User(n, n, r) for n, r in [("geeta", Role.SAFE_WRITE), ("lakhan", Role.PRIVILEGED),
+                                                      ("ankit", Role.PRIVILEGED), ("amit", Role.READ)])
 
 
 def cr(**kw):
-    return {"id": "CR-1", "status": "pending", "risk_tier": "LOW", "requested_by": "arjun",
+    return {"id": "CR-1", "status": "pending", "risk_tier": "LOW", "requested_by": "ankit",
             "change_type": "modify_tags", **kw}
 
 
 def test_self_approval():
-    assert can_decide(ARJUN, cr()) == Decision(False, "You can't approve your own request")
+    assert can_decide(ANKIT, cr()) == Decision(False, "You can't approve your own request")
 
 
 def test_role_too_low():
-    assert can_decide(SAM, cr(risk_tier="HIGH")) == Decision(False, "Your role (SAFE-WRITE) can't approve HIGH changes")
+    assert can_decide(GEETA, cr(risk_tier="HIGH")) == Decision(False, "Your role (SAFE-WRITE) can't approve HIGH changes")
 
 
 def test_read_cannot_approve_low():
-    assert can_decide(RITA, cr()) == Decision(False, "Your role (READ) can't approve LOW changes")
+    assert can_decide(AMIT, cr()) == Decision(False, "Your role (READ) can't approve LOW changes")
 
 
 def test_not_pending():
-    assert can_decide(PRIYA, cr(status="approved")) == Decision(False, "Not pending")
+    assert can_decide(LAKHAN, cr(status="approved")) == Decision(False, "Not pending")
 
 
 def test_priya_can_approve():
-    assert can_decide(PRIYA, cr(risk_tier="HIGH")) == Decision(True, None)
-    assert can_decide(SAM, cr()) == Decision(True, None)
+    assert can_decide(LAKHAN, cr(risk_tier="HIGH")) == Decision(True, None)
+    assert can_decide(GEETA, cr()) == Decision(True, None)
 
 
 def test_withdraw_only_requester():
-    assert can_withdraw(ARJUN, cr()) and not can_withdraw(PRIYA, cr())
-    assert not can_withdraw(ARJUN, cr(status="approved"))
+    assert can_withdraw(ANKIT, cr()) and not can_withdraw(LAKHAN, cr())
+    assert not can_withdraw(ANKIT, cr(status="approved"))
 
 
 def test_cancel_scheduled_privileged_only():
-    assert can_cancel(PRIYA, cr(status="scheduled")) and not can_cancel(SAM, cr(status="scheduled"))
-    assert not can_cancel(PRIYA, cr(status="pending"))
+    assert can_cancel(LAKHAN, cr(status="scheduled")) and not can_cancel(GEETA, cr(status="scheduled"))
+    assert not can_cancel(LAKHAN, cr(status="pending"))
 
 
 def test_retry_cleanup_privileged_only():
-    assert can_retry_cleanup(PRIYA, cr(status="failed_cleanup_pending"))
-    assert not can_retry_cleanup(SAM, cr(status="failed_cleanup_pending"))
+    assert can_retry_cleanup(LAKHAN, cr(status="failed_cleanup_pending"))
+    assert not can_retry_cleanup(GEETA, cr(status="failed_cleanup_pending"))
 
 
 def test_rollback_tier():
@@ -61,12 +61,12 @@ def test_rollback_tier():
 
 
 def test_rollback_rules():
-    assert can_propose_rollback(SAM, cr(status="succeeded"))
-    assert not can_propose_rollback(SAM, cr(status="succeeded", change_type="modify_instance_class"))
-    assert can_propose_rollback(PRIYA, cr(status="succeeded", change_type="modify_instance_class"))
-    assert not can_propose_rollback(PRIYA, cr(status="succeeded", change_type="restore_test"))
-    assert not can_propose_rollback(RITA, cr(status="succeeded"))
-    assert not can_propose_rollback(PRIYA, cr(status="failed"))
+    assert can_propose_rollback(GEETA, cr(status="succeeded"))
+    assert not can_propose_rollback(GEETA, cr(status="succeeded", change_type="modify_instance_class"))
+    assert can_propose_rollback(LAKHAN, cr(status="succeeded", change_type="modify_instance_class"))
+    assert not can_propose_rollback(LAKHAN, cr(status="succeeded", change_type="restore_test"))
+    assert not can_propose_rollback(AMIT, cr(status="succeeded"))
+    assert not can_propose_rollback(LAKHAN, cr(status="failed"))
 
 
 def test_can_propose():

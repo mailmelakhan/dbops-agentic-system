@@ -85,10 +85,10 @@ All services run in one Docker Compose project. Only `frontend` publishes a port
 
 | User | Role | Purpose in the demo |
 |---|---|---|
-| `priya` | PRIVILEGED | approver |
-| `arjun` | PRIVILEGED | DBA Lead; requests resizes (two PRIVILEGED users are needed so the no-self-approval rule can be shown) |
-| `sam` | SAFE-WRITE | tags and snapshots |
-| `rita` | READ | read-only viewer |
+| `lakhan` | PRIVILEGED | approver |
+| `ankit` | PRIVILEGED | DBA Lead; requests resizes (two PRIVILEGED users are needed so the no-self-approval rule can be shown) |
+| `geeta` | SAFE-WRITE | tags and snapshots |
+| `amit` | READ | read-only viewer |
 
 **How services know who is calling (my call):** the frontend logs the user in against `users.yaml` and sends two headers on every request: `X-DBOps-User: <username>` and `X-DBOps-Service-Token: <shared secret from env>`. Each service **looks up the role itself** in its own copy of `users.yaml` and never trusts a role sent by the caller. This is a demo-grade setup; replacing it with real identity later only changes this layer.
 

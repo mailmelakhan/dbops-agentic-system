@@ -7,7 +7,7 @@ from dbops_frontend.views.audit_reports import audit_frame, report_status_label
 @pytest.fixture
 def audit_view(view_app):
     def make(view=None, **kw):
-        kw.setdefault("logged_in", "rita")
+        kw.setdefault("logged_in", "amit")
         session = kw.pop("session", {})
         if view:
             session["audit_view"] = view
@@ -38,8 +38,8 @@ def test_table_shows_rows(audit_view):
 def test_filter_by_user(audit_view):
     at = audit_view()
     at.run()
-    at.selectbox(key="audit_user").select("sam").run()
-    assert set(at.dataframe[0].value["User"]) == {"sam"}
+    at.selectbox(key="audit_user").select("geeta").run()
+    assert set(at.dataframe[0].value["User"]) == {"geeta"}
 
 
 def test_paging(audit_view):
@@ -56,9 +56,9 @@ def test_paging(audit_view):
 
 
 def test_audit_frame_columns():
-    df = audit_frame([{"id": "a1", "ts": "t", "user": "sam", "action": "chat.tool_call", "tool": "rds.x",
+    df = audit_frame([{"id": "a1", "ts": "t", "user": "geeta", "action": "chat.tool_call", "tool": "rds.x",
                        "database": "db", "result": "ok", "change_request_id": None, "detail": ""},
-                      {"id": "a2", "ts": "t", "user": "sam", "action": "change.approved", "tool": None,
+                      {"id": "a2", "ts": "t", "user": "geeta", "action": "change.approved", "tool": None,
                        "database": "db", "result": "denied", "change_request_id": "CR-1", "detail": ""}])
     assert list(df.columns) == ["Time", "User", "Action / tool", "Database", "Result", "CR"]
     assert df.iloc[0]["Action / tool"] == "rds.x" and df.iloc[0]["Result"] == "✅ ok"

@@ -44,10 +44,10 @@ The demo password for every user is `dbops-demo`. Change the hashes in `config/u
 
 | User | Role | Use in the demo |
 |---|---|---|
-| `priya` | PRIVILEGED | approver |
-| `arjun` | PRIVILEGED | DBA lead; requests resizes (shows the no-self-approval rule) |
-| `sam` | SAFE-WRITE | tags and snapshots |
-| `rita` | READ | read-only viewer |
+| `lakhan` | PRIVILEGED | approver |
+| `ankit` | PRIVILEGED | DBA lead; requests resizes (shows the no-self-approval rule) |
+| `geeta` | SAFE-WRITE | tags and snapshots |
+| `amit` | READ | read-only viewer |
 
 ## Configuration
 

@@ -11,27 +11,27 @@ def state_db(state, identifier):
 
 
 def test_self_approval_refused(client):
-    r = approve(client("arjun"), "CR-0143", override_reason="x")
+    r = approve(client("ankit"), "CR-0143", override_reason="x")
     assert (r.status_code, r.json()["error"]["code"]) == (403, "self_approval")
 
 
 def test_role_from_users_file_not_header(client):
-    c = client("rita")
+    c = client("amit")
     c.headers["X-DBOps-Role"] = "PRIVILEGED"
     assert approve(c, "CR-0140").json()["error"]["code"] == "forbidden_role"
 
 
 def test_safe_write_cannot_approve_medium(client):
-    assert approve(client("sam"), "CR-0142").json()["error"]["code"] == "forbidden_role"
+    assert approve(client("geeta"), "CR-0142").json()["error"]["code"] == "forbidden_role"
 
 
 def test_safe_write_can_approve_low(client):
-    r = approve(client("sam"), "CR-0141")
+    r = approve(client("geeta"), "CR-0141")
     assert (r.status_code, r.json()) == (202, {"status": "executing"})
 
 
 def test_outside_window_needs_reason_then_runs_through_steps(client, clock):
-    c = client("priya")
+    c = client("lakhan")
     r = approve(c, "CR-0143")
     assert (r.status_code, r.json()["error"]["code"]) == (422, "window_override_reason_required")
     r = approve(c, "CR-0143", override_reason="Incident INC-77")
@@ -45,7 +45,7 @@ def test_outside_window_needs_reason_then_runs_through_steps(client, clock):
 
 
 def test_progress_is_partial_midway(client, clock):
-    c = client("priya")
+    c = client("lakhan")
     approve(c, "CR-0143", override_reason="x")
     clock.advance(2.5)
     cr = c.get("/change-requests/CR-0143").json()
@@ -54,61 +54,61 @@ def test_progress_is_partial_midway(client, clock):
 
 
 def test_inside_window_needs_no_reason(client):
-    assert approve(client("arjun"), "CR-0144").status_code == 202
+    assert approve(client("ankit"), "CR-0144").status_code == 202
 
 
 def test_next_window_schedules(client):
-    r = client("priya").post("/change-requests/CR-0143/approve", json={"mode": "next_window"})
+    r = client("lakhan").post("/change-requests/CR-0143/approve", json={"mode": "next_window"})
     assert r.json() == {"status": "scheduled"}
-    cr = client("priya").get("/change-requests/CR-0143").json()
+    cr = client("lakhan").get("/change-requests/CR-0143").json()
     steps = [(p["step"], p["state"]) for p in cr["progress"]]
     assert steps[:2] == [("pre_snapshot", "done"), ("scheduled", "active")]
 
 
 def test_drifted(client):
-    assert approve(client("priya"), "CR-0139").json()["error"]["code"] == "drifted"
+    assert approve(client("lakhan"), "CR-0139").json()["error"]["code"] == "drifted"
 
 
 def test_not_pending_is_invalid_state(client):
-    r = approve(client("priya"), "CR-0134")
+    r = approve(client("lakhan"), "CR-0134")
     assert (r.status_code, r.json()["error"]["code"]) == (409, "invalid_state")
 
 
 def test_reject_needs_reason(client):
-    r = client("priya").post("/change-requests/CR-0140/reject", json={"reason": ""})
+    r = client("lakhan").post("/change-requests/CR-0140/reject", json={"reason": ""})
     assert (r.status_code, r.json()["error"]["code"]) == (422, "validation_error")
 
 
 def test_reject(client):
-    r = client("priya").post("/change-requests/CR-0140/reject", json={"reason": "Wrong tag"})
+    r = client("lakhan").post("/change-requests/CR-0140/reject", json={"reason": "Wrong tag"})
     assert r.json() == {"status": "rejected"}
-    cr = client("priya").get("/change-requests/CR-0140").json()
+    cr = client("lakhan").get("/change-requests/CR-0140").json()
     assert (cr["status_reason"], cr["approval"]["decision"]) == ("Wrong tag", "rejected")
 
 
 def test_withdraw_only_by_requester(client):
-    assert client("priya").post("/change-requests/CR-0140/withdraw").json()["error"]["code"] == "not_requester"
-    assert client("sam").post("/change-requests/CR-0140/withdraw").json() == {"status": "withdrawn"}
+    assert client("lakhan").post("/change-requests/CR-0140/withdraw").json()["error"]["code"] == "not_requester"
+    assert client("geeta").post("/change-requests/CR-0140/withdraw").json() == {"status": "withdrawn"}
 
 
 def test_cancel_scheduled(client, clock):
-    assert client("sam").post("/change-requests/CR-0135/cancel", json={"reason": "r"}).status_code == 403
-    assert client("priya").post("/change-requests/CR-0135/cancel", json={"reason": "freeze"}).status_code == 202
+    assert client("geeta").post("/change-requests/CR-0135/cancel", json={"reason": "r"}).status_code == 403
+    assert client("lakhan").post("/change-requests/CR-0135/cancel", json={"reason": "freeze"}).status_code == 202
     clock.advance(2.1)
-    cr = client("priya").get("/change-requests/CR-0135").json()
+    cr = client("lakhan").get("/change-requests/CR-0135").json()
     assert (cr["status"], cr["status_reason"]) == ("cancelled", "freeze")
 
 
 def test_seeded_scheduled_stays_scheduled(client, clock):
     clock.advance(3600)
-    assert client("priya").get("/change-requests/CR-0135").json()["status"] == "scheduled"
+    assert client("lakhan").get("/change-requests/CR-0135").json()["status"] == "scheduled"
 
 
 def test_retry_cleanup(client, clock):
-    assert client("sam").post("/change-requests/CR-0136/retry-cleanup").status_code == 403
-    assert client("priya").post("/change-requests/CR-0136/retry-cleanup").status_code == 202
+    assert client("geeta").post("/change-requests/CR-0136/retry-cleanup").status_code == 403
+    assert client("lakhan").post("/change-requests/CR-0136/retry-cleanup").status_code == 202
     clock.advance(2.1)
-    cr = client("priya").get("/change-requests/CR-0136").json()
+    cr = client("lakhan").get("/change-requests/CR-0136").json()
     assert cr["status"] == "succeeded" and cr["progress"][-1]["state"] == "done"
 
 
@@ -116,14 +116,14 @@ def test_restore_test_on_legacy_db_ends_cleanup_pending(app, client, clock):
     state = app.state.mock
     with state.lock:
         cr = new_change_request(state, change_type="restore_test", database=state_db(state, "legacy-reports-db"),
-                                requested_by="arjun", params={}, diff=[], summary="t", now=clock.now())
-    approve(client("priya"), cr["id"])
+                                requested_by="ankit", params={}, diff=[], summary="t", now=clock.now())
+    approve(client("lakhan"), cr["id"])
     clock.advance(10)
-    got = client("priya").get(f"/change-requests/{cr['id']}").json()
+    got = client("lakhan").get(f"/change-requests/{cr['id']}").json()
     assert got["status"] == "failed_cleanup_pending" and got["progress"][-1]["state"] == "failed"
 
 
 def test_actions_write_audit_rows(app, client):
-    client("priya").post("/change-requests/CR-0140/reject", json={"reason": "no"})
+    client("lakhan").post("/change-requests/CR-0140/reject", json={"reason": "no"})
     rows = [r for r in app.state.mock.audit if r["change_request_id"] == "CR-0140"]
-    assert any(r["action"] == "change.rejected" and r["user"] == "priya" for r in rows)
+    assert any(r["action"] == "change.rejected" and r["user"] == "lakhan" for r in rows)

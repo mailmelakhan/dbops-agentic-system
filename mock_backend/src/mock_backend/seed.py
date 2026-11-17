@@ -96,87 +96,87 @@ def _seed_change_requests(state: MockState, now: datetime) -> None:
         cr["result"] = {"outcome": "succeeded", "message": message, "report_id": None}
 
     tags_before, tags_after = {"owner": "payments"}, {"owner": "payments-core"}
-    cr, t = make(130, "modify_tags", "prod-payments-db", "sam", 144, "Change owner tag on prod-payments-db",
+    cr, t = make(130, "modify_tags", "prod-payments-db", "geeta", 144, "Change owner tag on prod-payments-db",
                  [{"field": "tag:owner", "before": "payments", "after": "payments-core"}],
                  params={"before": tags_before, "after": tags_after}, status="succeeded")
-    succeeded(cr, t, "priya", "Tags updated")
+    succeeded(cr, t, "lakhan", "Tags updated")
 
-    cr, t = make(131, "create_snapshot", "prod-orders-db", "sam", 120, "Snapshot prod-orders-db before release",
+    cr, t = make(131, "create_snapshot", "prod-orders-db", "geeta", 120, "Snapshot prod-orders-db before release",
                  [{"field": "snapshot", "before": None, "after": "prod-orders-db-pre-release-20261111"}],
                  params={"snapshot_identifier": "prod-orders-db-pre-release-20261111"}, status="succeeded")
-    succeeded(cr, t, "priya", "Snapshot available")
+    succeeded(cr, t, "lakhan", "Snapshot available")
 
-    cr, t = make(132, "modify_instance_class", "staging-legacy-db", "arjun", 96,
+    cr, t = make(132, "modify_instance_class", "staging-legacy-db", "ankit", 96,
                  "Resize staging-legacy-db to db.t3.large",
                  [{"field": "instance_class", "before": "db.t3.medium", "after": "db.t3.large"}],
                  params={"from_class": "db.t3.medium", "to_class": "db.t3.large"}, status="succeeded")
-    succeeded(cr, t, "priya", "Instance class changed")
+    succeeded(cr, t, "lakhan", "Instance class changed")
     cr["maintenance_window"]["inside_now"] = None
 
-    cr, t = make(133, "create_snapshot", "legacy-reports-db", "sam", 72, "Snapshot legacy-reports-db",
+    cr, t = make(133, "create_snapshot", "legacy-reports-db", "geeta", 72, "Snapshot legacy-reports-db",
                  [{"field": "snapshot", "before": None, "after": "legacy-reports-db-manual-20261113"}],
                  params={"snapshot_identifier": "legacy-reports-db-manual-20261113"}, status="failed")
-    cr["approval"] = approval("priya", t + timedelta(minutes=5))
+    cr["approval"] = approval("lakhan", t + timedelta(minutes=5))
     cr["progress"] = [{"step": "creating", "state": "failed", "at": iso(t + timedelta(minutes=9))},
                       {"step": "available", "state": "pending", "at": None}]
     cr["result"] = {"outcome": "failed", "message": "SnapshotQuotaExceeded: manual snapshot quota reached",
                     "report_id": None}
 
-    cr, t = make(134, "modify_tags", "prod-orders-db", "sam", 60, "Set owner tag on prod-orders-db",
+    cr, t = make(134, "modify_tags", "prod-orders-db", "geeta", 60, "Set owner tag on prod-orders-db",
                  [{"field": "tag:owner", "before": "orders", "after": "order-team"}],
                  params={"before": {"owner": "orders"}, "after": {"owner": "order-team"}}, status="rejected",
                  status_reason="Wrong owner tag")
-    cr["approval"] = {"decision": "rejected", "decided_by": "priya", "decided_at": iso(t + timedelta(minutes=30)),
+    cr["approval"] = {"decision": "rejected", "decided_by": "lakhan", "decided_at": iso(t + timedelta(minutes=30)),
                       "mode": None, "override_reason": None, "reason": "Wrong owner tag"}
 
-    cr, t = make(135, "modify_instance_class", "prod-payments-db", "arjun", 30,
+    cr, t = make(135, "modify_instance_class", "prod-payments-db", "ankit", 30,
                  "Resize prod-payments-db to db.r6g.2xlarge",
                  [{"field": "instance_class", "before": "db.r6g.xlarge", "after": "db.r6g.2xlarge"}],
                  params={"from_class": "db.r6g.xlarge", "to_class": "db.r6g.2xlarge"}, status="scheduled")
-    cr["approval"] = approval("priya", t + timedelta(hours=1), mode="next_window")
+    cr["approval"] = approval("lakhan", t + timedelta(hours=1), mode="next_window")
     cr["progress"] = [{"step": "pre_snapshot", "state": "done", "at": iso(t + timedelta(hours=1))},
                       {"step": "scheduled", "state": "active", "at": iso(t + timedelta(hours=1))},
                       {"step": "applied", "state": "pending", "at": None}]
 
-    cr, t = make(136, "restore_test", "legacy-reports-db", "arjun", 26, "Restore test of legacy-reports-db",
+    cr, t = make(136, "restore_test", "legacy-reports-db", "ankit", 26, "Restore test of legacy-reports-db",
                  [{"field": "temporary_instance", "before": None, "after": "restoretest-legacy-reports-db-202611150800"},
                   {"field": "instance_class", "before": None, "after": "db.t3.micro"}],
                  params={"source_snapshot": "legacy-reports-db-auto-20261115"}, status="failed_cleanup_pending")
-    cr["approval"] = approval("priya", t + timedelta(minutes=10))
+    cr["approval"] = approval("lakhan", t + timedelta(minutes=10))
     cr["progress"] = [{"step": s, "state": "done", "at": iso(t + timedelta(minutes=20 + 5 * i))}
                       for i, s in enumerate(["restoring", "available", "verified"])]
     cr["progress"].append({"step": "cleaned_up", "state": "failed", "at": iso(t + timedelta(minutes=50))})
     cr["result"] = {"outcome": "failed", "report_id": None,
                     "message": "Cleanup failed after 3 retries; the temporary instance is still running"}
 
-    cr, t = make(137, "restore_test", "prod-payments-db", "priya", 24, "Restore test of prod-payments-db",
+    cr, t = make(137, "restore_test", "prod-payments-db", "lakhan", 24, "Restore test of prod-payments-db",
                  [{"field": "temporary_instance", "before": None, "after": "restoretest-prod-payments-db-202611151000"},
                   {"field": "instance_class", "before": None, "after": "db.t4g.medium"}],
                  params={"source_snapshot": "prod-payments-db-auto-20261115"}, status="succeeded")
-    succeeded(cr, t, "arjun", "Restore test passed; temporary instance deleted")
+    succeeded(cr, t, "ankit", "Restore test passed; temporary instance deleted")
 
-    make(138, "modify_tags", "dev-sandbox-db", "sam", 20, "Add team tag to dev-sandbox-db",
+    make(138, "modify_tags", "dev-sandbox-db", "geeta", 20, "Add team tag to dev-sandbox-db",
          [{"field": "tag:team", "before": None, "after": "platform"}],
          params={"before": {}, "after": {"team": "platform"}}, status="withdrawn")
 
-    make(139, "modify_tags", "staging-legacy-db", "sam", 8, "Set cost-center tag on staging-legacy-db",
+    make(139, "modify_tags", "staging-legacy-db", "geeta", 8, "Set cost-center tag on staging-legacy-db",
          [{"field": "tag:cost-center", "before": "cc-100", "after": "cc-210"}],
          params={"before": {"cost-center": "cc-100"}, "after": {"cost-center": "cc-210"}})
-    make(140, "modify_tags", "prod-orders-db", "sam", 6, "Add backup-tier tag to prod-orders-db",
+    make(140, "modify_tags", "prod-orders-db", "geeta", 6, "Add backup-tier tag to prod-orders-db",
          [{"field": "tag:backup-tier", "before": None, "after": "gold"}],
          params={"before": {}, "after": {"backup-tier": "gold"}})
-    make(141, "create_snapshot", "prod-payments-db", "priya", 5, "Snapshot prod-payments-db",
+    make(141, "create_snapshot", "prod-payments-db", "lakhan", 5, "Snapshot prod-payments-db",
          [{"field": "snapshot", "before": None, "after": "prod-payments-db-manual-20261116"}],
          params={"snapshot_identifier": "prod-payments-db-manual-20261116"})
-    make(142, "restore_test", "prod-payments-db", "arjun", 4, "Restore test of prod-payments-db",
+    make(142, "restore_test", "prod-payments-db", "ankit", 4, "Restore test of prod-payments-db",
          [{"field": "temporary_instance", "before": None, "after": "restoretest-prod-payments-db-202611160600"},
           {"field": "instance_class", "before": None, "after": "db.t4g.medium"},
           {"field": "estimated_cost_per_hour", "before": None, "after": "$0.07"}],
          params={"source_snapshot": "prod-payments-db-auto-20261116"})
-    make(143, "modify_instance_class", "prod-orders-db", "arjun", 2, "Resize prod-orders-db to db.r6g.xlarge",
+    make(143, "modify_instance_class", "prod-orders-db", "ankit", 2, "Resize prod-orders-db to db.r6g.xlarge",
          [{"field": "instance_class", "before": "db.r6g.large", "after": "db.r6g.xlarge"}],
          params={"from_class": "db.r6g.large", "to_class": "db.r6g.xlarge"})
-    cr, _ = make(144, "modify_instance_class", "staging-legacy-db", "priya", 1,
+    cr, _ = make(144, "modify_instance_class", "staging-legacy-db", "lakhan", 1,
                  "Resize staging-legacy-db to db.t3.xlarge",
                  [{"field": "instance_class", "before": "db.t3.large", "after": "db.t3.xlarge"}],
                  params={"from_class": "db.t3.large", "to_class": "db.t3.xlarge"})
@@ -191,7 +191,7 @@ _TOOLS = ["rds.describe_db_instances", "cloudwatch.get_metric_statistics", "rds.
 def _seed_audit(state: MockState, now: datetime) -> None:
     from mock_backend.changes import audit_row
 
-    users = ["priya", "arjun", "sam", "rita"]
+    users = ["lakhan", "ankit", "geeta", "amit"]
     dbs = [d["identifier"] for d in state.fleet]
     for i in range(48):
         user, tool, db = users[i % 4], _TOOLS[i % len(_TOOLS)], dbs[(i * 5) % len(dbs)]
@@ -213,8 +213,8 @@ def _seed_reports(state: MockState, now: datetime) -> None:
     ready("rep-seed-restore", "restore_test", "Restore test CR-0137", "executor", 23,
           restore_test_builder(restore_cr)())
     restore_cr["result"]["report_id"] = "rep-seed-restore"
-    ready("rep-seed-fleet", "fleet_health", "Fleet health (all envs)", "rita", 12, fleet_health_builder(state, None)())
+    ready("rep-seed-fleet", "fleet_health", "Fleet health (all envs)", "amit", 12, fleet_health_builder(state, None)())
     state.reports["rep-seed-failed"] = {
         "id": "rep-seed-failed", "kind": "change_history", "title": "Change history (last 30 days)",
         "status": "failed", "error": "Timed out reading CloudWatch", "created_at": iso(now - timedelta(hours=6)),
-        "created_by": "arjun", "formats": [], "_started": now, "_build": None, "_content": {}}
+        "created_by": "ankit", "formats": [], "_started": now, "_build": None, "_content": {}}

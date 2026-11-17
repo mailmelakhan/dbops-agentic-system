@@ -7,7 +7,7 @@ from dbops_frontend.views.health import fleet_frame, style_fleet
 @pytest.fixture
 def health_view(view_app):
     def make(**kw):
-        kw.setdefault("logged_in", "rita")
+        kw.setdefault("logged_in", "amit")
         return view_app("health", **kw)
 
     return make

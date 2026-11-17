@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from mock_backend.app import create_app
 
 TOKEN = "test-token"
-USERS = [("priya", "PRIVILEGED"), ("arjun", "PRIVILEGED"), ("sam", "SAFE-WRITE"), ("rita", "READ")]
+USERS = [("lakhan", "PRIVILEGED"), ("ankit", "PRIVILEGED"), ("geeta", "SAFE-WRITE"), ("amit", "READ")]
 
 
 @pytest.fixture

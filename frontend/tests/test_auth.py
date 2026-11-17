@@ -3,8 +3,8 @@ from dbops_frontend.auth import Role, User, authenticate, load_users
 
 def test_authenticate(users_file):
     users = load_users(users_file)
-    assert authenticate(users, "priya", "pw") == User("priya", "Priya", Role.PRIVILEGED)
-    assert authenticate(users, "priya", "nope") is None
+    assert authenticate(users, "lakhan", "pw") == User("lakhan", "Lakhan", Role.PRIVILEGED)
+    assert authenticate(users, "lakhan", "nope") is None
     assert authenticate(users, "mallory", "pw") is None
     assert authenticate(users, "", "") is None
 

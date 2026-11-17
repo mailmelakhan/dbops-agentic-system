@@ -22,7 +22,7 @@ def test_login_required(shell):
 def test_wrong_password(shell):
     at = shell()
     at.run()
-    login(at, "priya", "bad")
+    login(at, "lakhan", "bad")
     assert at.error[0].value == "Wrong username or password"
     assert "user" not in at.session_state
 
@@ -30,15 +30,15 @@ def test_wrong_password(shell):
 def test_login_shows_health_and_user(shell):
     at = shell()
     at.run()
-    login(at, "priya", "pw")
+    login(at, "lakhan", "pw")
     assert not at.exception
-    assert at.session_state["user"].username == "priya"
-    assert any("Priya" in m.value and "PRIVILEGED" in m.value for m in at.sidebar.markdown)
+    assert at.session_state["user"].username == "lakhan"
+    assert any("Lakhan" in m.value and "PRIVILEGED" in m.value for m in at.sidebar.markdown)
     assert at.header[0].value == "Health"
 
 
 def test_logout(shell):
-    at = shell(logged_in="priya")
+    at = shell(logged_in="lakhan")
     at.run()
     next(b for b in at.sidebar.button if b.label == "Log out").click().run()
     assert "user" not in at.session_state
