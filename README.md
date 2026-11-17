@@ -10,7 +10,7 @@ This repository currently holds **part 1 of 4** (see the [design spec](docs/supe
 | `contracts/` | OpenAPI 3.1 contracts for `agent-api`, `executor` and `health-analytics` |
 | `config/users.yaml` | The hardcoded demo users (bcrypt hashes) |
 | `mock_backend/` | A FastAPI mock that implements all three contracts in memory |
-| `frontend/` | The Streamlit app: Health, Chat, Approvals, Audit & reports |
+| `frontend/` | The Streamlit app: Chat, Approvals, Audit & reports, with a fleet health panel on every page |
 
 The real `agent-api`, `executor` and `health-analytics` services come in parts 2–4 and replace the mock by changing
 three URLs.
@@ -64,6 +64,7 @@ The demo password for every user is `dbops-demo`. Change the hashes in `config/u
   `fail` makes the run fail; anything else gets a read-only answer with two tool calls.
 - Approving **CR-0139** always reports drift. A restore test of `legacy-reports-db` always ends with cleanup failed.
 - CR-0135 stays scheduled until someone cancels it; CR-0136 is waiting for a cleanup retry.
+- The fleet panel shows 6 of 14 databases needing attention; legacy-reports-db and prod-orders-db are CRITICAL.
 
 ## Tests
 

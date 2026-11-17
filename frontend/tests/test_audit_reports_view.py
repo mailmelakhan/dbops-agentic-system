@@ -103,3 +103,21 @@ def test_unreachable_banner(audit_view):
     at = audit_view(agent_url="http://127.0.0.1:9")
     at.run()
     assert at.error[0].value == "agent-api unavailable, showing nothing rather than stale data"
+
+
+def test_generate_health_report_from_reports(view_app, mock_server):
+    at = view_app("audit_reports", logged_in="amit", session={"audit_view": "Reports"},
+                  base_url=mock_server(time_scale=1.0))  # real delays, so the new report is still generating
+    at.run()
+    at.button(key="reports_generate_health").click().run()
+    assert not at.exception
+    assert any("fleet_health · ⏳ generating…" in m.value for m in at.markdown)
+
+
+def test_generate_health_report_health_down(view_app):
+    at = view_app("audit_reports", logged_in="amit", session={"audit_view": "Reports"},
+                  health_url="http://127.0.0.1:9")
+    at.run()
+    at.button(key="reports_generate_health").click().run()
+    assert at.error[0].value == "health-analytics unavailable, showing nothing rather than stale data"
+    assert any("restore_test" in m.value for m in at.markdown)   # seeded reports still listed

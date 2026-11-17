@@ -2,6 +2,7 @@
 
 Date: 2026-11-14
 Status: Draft, awaiting approval
+Amended: 2026-11-16-fleet-panel-design.md replaces the Health page (§8.3) with a fleet panel on every page and makes Chat the default (§8.1).
 Scope of this doc: part 1 of 4: overall architecture, API contracts between containers, the Streamlit frontend, and a mock backend. `agent-api`, `executor` and `health-analytics` each get their own design later, built against the contracts here.
 
 ---

@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from dbops_frontend.api.base import ApiError, ServiceUnavailable
-from dbops_frontend.clients import agent_client
+from dbops_frontend.clients import agent_client, health_client
 from dbops_frontend.format import escape_md, md_inline, plain_error
 from dbops_frontend.views.common import api_error_banner, service_banner
 
@@ -143,7 +143,22 @@ def _reports_body(polling: bool) -> None:
         st.rerun()  # everything finished: a full rerun stops the polling fragment
 
 
+def _generate_health_report() -> None:
+    if not st.button("Generate health report", key="reports_generate_health"):
+        return
+    try:
+        health_client().start_fleet_report()
+    except ServiceUnavailable:
+        service_banner("health-analytics")
+        return
+    except ApiError as err:
+        st.warning(plain_error(err))
+        return
+    st.rerun()  # the new report shows as generating and polling starts
+
+
 def _reports() -> None:
+    _generate_health_report()
     try:
         generating = any(r["status"] == "generating" for r in agent_client().list_reports())
     except ServiceUnavailable:
