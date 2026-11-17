@@ -84,10 +84,16 @@ def frontend_env(monkeypatch, users_file):
 FRONTEND = __import__("pathlib").Path(__file__).resolve().parents[1]
 
 
-def _view_script(module: str, func: str = "render", args: tuple = ()) -> None:
+def _view_script(module: str, func: str = "render", args: tuple = (), with_panel: bool = False) -> None:
     import importlib
 
-    getattr(importlib.import_module(f"dbops_frontend.views.{module}"), func)(*args)
+    view = importlib.import_module(f"dbops_frontend.views.{module}")
+    if with_panel:
+        from dbops_frontend.layout import run_with_panel
+
+        run_with_panel(lambda: getattr(view, func)(*args))
+    else:
+        getattr(view, func)(*args)
 
 
 @pytest.fixture
@@ -100,14 +106,15 @@ def view_app(mock_server, frontend_env, monkeypatch):
 
     def make(module: str, *, logged_in: str, base_url: str | None = None, agent_url: str | None = None,
              health_url: str | None = None, session: dict | None = None, func: str = "render",
-             args: tuple = ()) -> AppTest:
+             args: tuple = (), with_panel: bool = False) -> AppTest:
         url = base_url or mock_server()
         frontend_env(url)
         if agent_url:
             monkeypatch.setenv("AGENT_API_URL", agent_url)
         if health_url:
             monkeypatch.setenv("HEALTH_URL", health_url)
-        at = AppTest.from_function(_view_script, kwargs={"module": module, "func": func, "args": args},
+        at = AppTest.from_function(_view_script, kwargs={"module": module, "func": func, "args": args,
+                                                         "with_panel": with_panel},
                                    default_timeout=15)
         at.session_state["user"] = User(logged_in, logged_in.title(), Role(roles[logged_in]))
         for key, value in (session or {}).items():

@@ -27,14 +27,16 @@ def test_wrong_password(shell):
     assert "user" not in at.session_state
 
 
-def test_login_shows_health_and_user(shell):
+def test_login_lands_on_chat_with_panel(shell):
     at = shell()
     at.run()
     login(at, "lakhan", "pw")
     assert not at.exception
     assert at.session_state["user"].username == "lakhan"
     assert any("Lakhan" in m.value and "PRIVILEGED" in m.value for m in at.sidebar.markdown)
-    assert at.header[0].value == "Health"
+    assert at.header[0].value == "Chat"
+    assert any("need attention" in m.value for m in at.markdown)
+    assert list(at.session_state["pages"]) == ["chat", "approvals", "audit"]
 
 
 def test_logout(shell):

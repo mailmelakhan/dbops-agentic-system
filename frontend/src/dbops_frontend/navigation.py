@@ -3,7 +3,7 @@ import streamlit as st
 from dbops_frontend.api.agent import AgentApi
 from dbops_frontend.api.base import ApiError, ServiceUnavailable
 from dbops_frontend.config import load_settings
-from dbops_frontend.views import approvals, audit_reports, chat, health
+from dbops_frontend.views import approvals, audit_reports, chat
 
 
 def approvals_title(pending: int) -> str:
@@ -25,8 +25,7 @@ def pending_count() -> int:
 
 def build_navigation(pending: int):
     pages = {
-        "health": st.Page(health.render, title="Health", icon="🩺", url_path="health", default=True),
-        "chat": st.Page(chat.render, title="Chat", icon="💬", url_path="chat"),
+        "chat": st.Page(chat.render, title="Chat", icon="💬", url_path="chat", default=True),
         "approvals": st.Page(approvals.render, title=approvals_title(pending), icon="✅", url_path="approvals"),
         "audit": st.Page(audit_reports.render, title="Audit & reports", icon="📜", url_path="audit"),
     }

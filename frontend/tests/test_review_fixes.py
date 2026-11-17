@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # ---- Important #1: any ApiError on page load shows a banner, never a traceback ----
 
-@pytest.mark.parametrize("module", ["health", "chat", "approvals", "audit_reports"])
+@pytest.mark.parametrize("module", ["fleet_panel", "chat", "approvals", "audit_reports"])
 def test_wrong_service_token_shows_banner_not_traceback(view_app, monkeypatch, module):
     at = view_app(module, logged_in="lakhan")
     monkeypatch.setenv("DBOPS_SERVICE_TOKEN", "wrong-token")

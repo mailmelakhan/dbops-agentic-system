@@ -1,6 +1,7 @@
-"""DB Ops Streamlit entry point: login gate, then st.navigation over the four pages."""
+"""DB Ops Streamlit entry point: login gate, then st.navigation over the three pages beside the fleet panel."""
 
 import streamlit as st
+from dbops_frontend.layout import run_with_panel
 from dbops_frontend.navigation import build_navigation, pending_count
 from dbops_frontend.views import common, login
 
@@ -12,4 +13,4 @@ if "user" not in st.session_state:
     st.stop()
 
 common.sidebar_user()
-build_navigation(pending_count()).run()
+run_with_panel(build_navigation(pending_count()).run)

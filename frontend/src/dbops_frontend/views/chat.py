@@ -194,6 +194,7 @@ def render() -> None:
     if active is not None:
         _live_turn(conv_id)
 
-    prompt = st.chat_input("Ask about your databases", disabled=active is not None, key="chat_input")
+    prompt = st.bottom.chat_input(  # stays pinned inside the layout column
+        "Ask about your databases", disabled=active is not None, key="chat_input")
     if prompt:
         _submit(agent, prompt)
