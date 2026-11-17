@@ -54,3 +54,8 @@ def test_status_badge_html():
     assert "#f59e0b" in warn and "#111827" in warn and ">WARNING<" in warn
     assert "#16a34a" in ok and ">OK<" in ok
     assert "#dc2626" in risk_badge_html("HIGH") and ">HIGH<" in risk_badge_html("HIGH")
+
+
+def test_reason_negative_days():
+    assert status_reason(db("a", 90, -3)) == "Storage full"
+    assert db_status(db("a", 90, -3)) is Status.CRITICAL

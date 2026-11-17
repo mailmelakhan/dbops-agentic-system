@@ -24,7 +24,7 @@ def db_status(db: dict) -> Status:
 
 
 def _storage_text(days: int) -> str:
-    if days == 0:
+    if days <= 0:
         return "Storage full"
     return f"Storage full in {days} day{'' if days == 1 else 's'}"
 
