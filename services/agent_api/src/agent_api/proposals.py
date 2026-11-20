@@ -1,12 +1,16 @@
 """Change proposals: build change-request bodies from real AWS values (design §6, §7.2)."""
 
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from botocore.exceptions import BotoCoreError, ClientError
+
 from agent_api.identity import Caller, Role
 from agent_api.scope import ScopedDb
 
+log = logging.getLogger(__name__)
 _WEEK = 7 * 24 * 60
 _DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
 _PREFERRED_CLASSES = ("db.t4g.micro", "db.t4g.small", "db.t4g.medium", "db.t3.micro")
@@ -21,6 +25,15 @@ class ProposalError(Exception):
 
 def required_role(tier: str) -> Role:
     return Role.SAFE_WRITE if tier == "LOW" else Role.PRIVILEGED
+
+
+def _aws_read(what: str, fn: Callable[[], Any]) -> Any:
+    """Run a boto3 read; AWS failures become a plain refusal (details are logged, not shown to the model)."""
+    try:
+        return fn()
+    except (ClientError, BotoCoreError):
+        log.warning("AWS read failed: %s", what, exc_info=True)
+        raise ProposalError(f"Couldn't read {what} from AWS") from None
 
 
 def _iso(dt: datetime) -> str:
@@ -99,8 +112,9 @@ class Proposer:
         self._check_role(caller, "modify_tags")
         db = self._resolve(identifier)
         rds = self._factory(db.region)
-        current = {t["Key"]: t["Value"]
-                   for t in rds.list_tags_for_resource(ResourceName=db.arn).get("TagList", [])}
+        tags = _aws_read(f"tags for {db.identifier}",
+                         lambda: rds.list_tags_for_resource(ResourceName=db.arn))
+        current = {t["Key"]: t["Value"] for t in tags.get("TagList", [])}
         after = {k: v for k, v in current.items() if k not in remove}
         after.update(add)
         diff = [{"field": f"tag:{k}", "before": current.get(k), "after": after.get(k)}
@@ -157,8 +171,9 @@ class Proposer:
         else:
             op, key, id_key, filt = ("describe_db_snapshots", "DBSnapshots",
                                      "DBSnapshotIdentifier", "DBInstanceIdentifier")
-        rows = [r for page in rds.get_paginator(op).paginate(**{filt: db.identifier})
-                for r in page.get(key, [])]
+        rows = _aws_read(f"snapshots for {db.identifier}", lambda: [
+            r for page in rds.get_paginator(op).paginate(**{filt: db.identifier})
+            for r in page.get(key, [])])
         rows = [r for r in rows if r.get("Status", "available") == "available"]
         if snapshot_id:
             if not any(r[id_key] == snapshot_id for r in rows):
@@ -169,10 +184,10 @@ class Proposer:
         return max(rows, key=lambda r: r["SnapshotCreateTime"])[id_key]
 
     def _smallest_class(self, rds: Any, db: ScopedDb) -> str:
-        orderable = {o["DBInstanceClass"]
-                     for page in rds.get_paginator("describe_orderable_db_instance_options").paginate(
-                         Engine=db.engine)
-                     for o in page.get("OrderableDBInstanceOptions", [])}
+        orderable = _aws_read(f"orderable instance classes for {db.identifier}", lambda: {
+            o["DBInstanceClass"]
+            for page in rds.get_paginator("describe_orderable_db_instance_options").paginate(Engine=db.engine)
+            for o in page.get("OrderableDBInstanceOptions", [])})
         for cls in _PREFERRED_CLASSES:
             if cls in orderable:
                 return cls
@@ -192,7 +207,8 @@ class Proposer:
                 f"{m} ({'writer' if w else 'reader'}, {self._member_class(m, db)})" for m, w in db.members)
             raise ProposalError(f"{db.identifier} is an Aurora cluster; resize one instance: {members}")
         rds = self._factory(db.region)
-        inst = rds.describe_db_instances(DBInstanceIdentifier=db.identifier)["DBInstances"][0]
+        inst = _aws_read(f"instance {db.identifier}", lambda: rds.describe_db_instances(
+            DBInstanceIdentifier=db.identifier))["DBInstances"][0]
         from_class = inst["DBInstanceClass"]
         if to_class == from_class:
             raise ProposalError(f"{db.identifier} is already {from_class}")

@@ -3,9 +3,14 @@ from datetime import UTC, datetime
 import boto3
 import pytest
 from agent_api.identity import Caller, Role
+from agent_api.mock_client import MockClient
 from agent_api.proposals import ProposalError, Proposer, window_state
 from agent_api.scope import ScopedDb, ScopeSet
 from botocore.stub import Stubber
+from jsonschema import Draft202012Validator
+from mock_backend.app import create_app as create_mock_app
+from mock_backend.clock import FakeClock
+from mock_backend.routes_internal import ChangeRequestBody
 
 NOW = datetime(2026, 11, 20, 10, 5, 30, tzinfo=UTC)  # a Friday
 PRICES = {"aurora-postgresql": {"us-east-1": {"db.t4g.medium": 0.073}},
@@ -234,3 +239,53 @@ def test_window_wraps_week_end():
     w = "sat:23:00-sun:01:00"
     assert window_state(w, datetime(2026, 11, 22, 0, 30, tzinfo=UTC)) == (True, "2026-11-28T23:00:00Z")
     assert window_state(w, datetime(2026, 11, 22, 2, 0, tzinfo=UTC)) == (False, "2026-11-28T23:00:00Z")
+
+
+def test_aws_error_becomes_proposal_error(proposer, aws, mock):
+    aws[1].add_client_error("list_tags_for_resource", "AccessDenied", "secret detail")
+    with pytest.raises(ProposalError) as e:
+        proposer.modify_tags(SAFE, None, "pg-1", {"a": "b"}, [])
+    assert str(e.value) == "Couldn't read tags for pg-1 from AWS"
+    aws[1].add_response("describe_db_snapshots", {"DBSnapshots": [
+        {"DBSnapshotIdentifier": "s1", "SnapshotCreateTime": NOW, "Status": "available"}]},
+        {"DBInstanceIdentifier": "pg-1"})
+    aws[1].add_client_error("describe_orderable_db_instance_options", "Throttling", "secret detail")
+    with pytest.raises(ProposalError) as e:
+        proposer.restore_test(PRIV, None, "pg-1")
+    assert str(e.value) == "Couldn't read orderable instance classes for pg-1 from AWS"
+    assert "secret" not in str(e.value) and mock.bodies == []
+
+
+def test_bodies_validate(aws, users_file, contract, client_transport_cls):
+    mock_app = create_mock_app(users_file, "test-token", clock=FakeClock(NOW), time_scale=1.0)
+    transport = client_transport_cls(mock_app)
+    try:
+        real = MockClient("http://mock", "test-token", transport=transport)
+        rec = FakeMock()
+
+        class Both:
+            def create_change_request(self, body):
+                rec.create_change_request(body)
+                return real.create_change_request(body)
+
+        client, stub = aws
+        p = Proposer(FakeResolver(), lambda region: client, Both(), PRICES, clock=lambda: NOW)
+        stub.add_response("list_tags_for_resource", {"TagList": [{"Key": "env", "Value": "prod"}]},
+                          {"ResourceName": f"{ARN}db:pg-1"})
+        stub.add_response("describe_db_cluster_snapshots", {"DBClusterSnapshots": [
+            {"DBClusterSnapshotIdentifier": "n", "SnapshotCreateTime": NOW, "Status": "available"}]},
+            {"DBClusterIdentifier": "aur-1"})
+        orderable(stub, "aurora-postgresql", ["db.t4g.medium"])
+        describe_instance(stub, "aur-1-r", "db.r6g.large", "sun:03:00-sun:03:30")
+        crs = [p.modify_tags(SAFE, "c1", "pg-1", {"team": "dba"}, []),
+               p.create_snapshot(SAFE, None, "aur-1"),
+               p.restore_test(PRIV, None, "aur-1"),
+               p.modify_instance_class(PRIV, None, "aur-1-r", "db.r6g.xlarge")]
+        for body in rec.bodies:
+            ChangeRequestBody(**body)
+        for cr in crs:
+            doc = contract.docs["agent-api"]
+            Draft202012Validator({"$ref": "#/components/schemas/ChangeRequest",
+                                  "components": doc["components"]}).validate(cr)
+    finally:
+        transport.close()

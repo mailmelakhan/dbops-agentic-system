@@ -1,6 +1,8 @@
 from pathlib import Path
 
+import anyio.from_thread
 import bcrypt
+import httpx
 import pytest
 import yaml
 from agent_api.app import create_app
@@ -74,3 +76,32 @@ class ContractChecker:
 @pytest.fixture(scope="session")
 def contract():
     return ContractChecker()
+
+
+class ClientTransport(httpx.BaseTransport):
+    """Sync transport over an in-process ASGI app: httpx.ASGITransport driven through a blocking portal.
+
+    (starlette's TestClient is built on a different httpx package here, so it cannot be used as a transport.)
+    """
+
+    def __init__(self, asgi_app):
+        self._asgi = httpx.ASGITransport(app=asgi_app)
+        self._cm = anyio.from_thread.start_blocking_portal()
+        self._portal = self._cm.__enter__()
+
+    async def _call(self, request: httpx.Request) -> httpx.Response:
+        resp = await self._asgi.handle_async_request(request)
+        content = await resp.aread()
+        return httpx.Response(resp.status_code, headers=resp.headers, content=content)
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        request.read()
+        return self._portal.call(self._call, request)
+
+    def close(self) -> None:
+        self._cm.__exit__(None, None, None)
+
+
+@pytest.fixture(scope="session")
+def client_transport_cls():
+    return ClientTransport
