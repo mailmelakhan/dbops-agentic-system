@@ -219,3 +219,19 @@ def test_unreachable_banner(approvals_view):
     at = approvals_view(logged_in="amit", agent_url="http://127.0.0.1:9")
     at.run()
     assert at.error[0].value == "agent-api unavailable, showing nothing rather than stale data"
+
+
+def test_simulated_banner(approvals_view, monkeypatch):
+    monkeypatch.setenv("EXECUTOR_SIMULATED", "true")
+    at = approvals_view(logged_in="geeta")
+    at.run()
+    assert not at.exception
+    assert at.info[0].value.startswith("Execution is simulated")
+
+
+def test_no_simulated_banner_by_default(approvals_view, monkeypatch):
+    monkeypatch.delenv("EXECUTOR_SIMULATED", raising=False)
+    at = approvals_view(logged_in="geeta")
+    at.run()
+    assert not at.exception
+    assert not [i for i in at.info if i.value.startswith("Execution is simulated")]

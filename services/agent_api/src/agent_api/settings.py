@@ -22,6 +22,7 @@ class Settings:
     scope_tag_value: str
     aws_regions: tuple[str, ...]
     aws_mcp_endpoint: str
+    aws_mcp_mode: str
     mcp_tool_allowlist: tuple[str, ...]
     mock_backend_url: str
     users_file: Path
@@ -41,6 +42,7 @@ def load_settings(env: Mapping[str, str]) -> Settings:
         scope_tag_value=env.get("DBOPS_SCOPE_TAG_VALUE", "true"),
         aws_regions=_csv(env.get("DBOPS_AWS_REGIONS", "us-east-1")),
         aws_mcp_endpoint=env.get("AWS_MCP_ENDPOINT", "https://aws-mcp.us-east-1.api.aws/mcp"),
+        aws_mcp_mode=env.get("AWS_MCP_MODE", "self-hosted").strip().lower(),
         mcp_tool_allowlist=_csv(env.get("MCP_TOOL_ALLOWLIST", DEFAULT_MCP_TOOL_ALLOWLIST)),
         mock_backend_url=env.get("MOCK_BACKEND_URL", "http://mock-backend:8000"),
         users_file=Path(env.get("DBOPS_USERS_FILE", "/config/users.yaml")),

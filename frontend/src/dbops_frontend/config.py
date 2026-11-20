@@ -10,6 +10,7 @@ class Settings:
     health_url: str
     service_token: str
     users_file: Path
+    executor_simulated: bool = False
 
 
 def load_settings() -> Settings:
@@ -20,4 +21,5 @@ def load_settings() -> Settings:
         health_url=os.environ.get("HEALTH_URL", "http://localhost:8000"),
         service_token=os.environ.get("DBOPS_SERVICE_TOKEN", ""),
         users_file=Path(os.environ.get("DBOPS_USERS_FILE", "/config/users.yaml")),
+        executor_simulated=os.environ.get("EXECUTOR_SIMULATED", "").strip().lower() == "true",
     )
