@@ -317,3 +317,20 @@ def test_step_name():
 def test_target_region_matches_guard(command, region):
     assert check_command(command, SCOPE, ("us-east-1", "eu-west-1")) is None
     assert target_region(command, ("us-east-1", "eu-west-1")) == region
+
+
+# Final-review fix F6: a paging token (Marker / NextToken) or page boundary can carry an out-of-scope identifier.
+@pytest.mark.parametrize("flag", ["--max-records", "--marker", "--no-paginate", "--max-items", "--starting-token",
+                                  "--page-size"])
+@pytest.mark.parametrize("base", [
+    "aws rds describe-db-instances",
+    "aws rds describe-events",
+    "aws rds describe-orderable-db-instance-options --engine postgres",
+    "aws cloudwatch describe-alarms",
+    "aws cloudwatch list-metrics --namespace AWS/RDS",
+])
+def test_guard_refuses_paging_flags(base, flag):
+    value = "" if flag == "--no-paginate" else " 20"
+    assert check(f"{base} {flag}{value}") == f"flag not allowed: {flag}"
+    if value:
+        assert check(f"{base} {flag}={value.strip()}") == f"flag not allowed: {flag}"

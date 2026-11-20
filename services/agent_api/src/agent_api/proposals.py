@@ -215,8 +215,7 @@ class Proposer:
         params: dict = {"from_class": from_class, "to_class": to_class}
         if db.cluster:
             params["cluster_identifier"] = db.cluster
-            cluster = self._scope.current().get(db.cluster, kind="cluster")
-            writer = any(m == db.identifier and w for m, w in (cluster.members if cluster else ()))
+            writer = self._is_cluster_writer(rds, db)
             impact = ("Writer instance: ~1–2 min failover to a reader during the change" if writer else
                       "Reader instance: no write downtime; reads on this instance pause while it restarts")
         else:
@@ -229,6 +228,13 @@ class Proposer:
             diff=[{"field": "instance_class", "before": from_class, "after": to_class}], impact=impact,
             rollback=["Snapshot taken automatically before the change", f"Modify back to {from_class}"],
             window={"required": True, "window": pmw, "inside_now": inside, "next_start": next_start})
+
+    def _is_cluster_writer(self, rds: Any, db: ScopedDb) -> bool:
+        """Writer status from AWS: the cluster itself may be out of scope when only the member is tagged."""
+        clusters = _aws_read(f"cluster {db.cluster}", lambda: rds.describe_db_clusters(
+            DBClusterIdentifier=db.cluster))["DBClusters"]
+        return any(m.get("DBInstanceIdentifier") == db.identifier and m.get("IsClusterWriter") is True
+                   for c in clusters for m in c.get("DBClusterMembers", []))
 
     def _member_class(self, member: str, cluster: ScopedDb) -> str:
         m = self._scope.current().get(member, region=cluster.region, kind="instance")

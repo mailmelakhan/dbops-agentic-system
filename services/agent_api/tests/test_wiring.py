@@ -27,12 +27,36 @@ def test_no_call_aws_is_error():
 
 def test_server_parameters_managed_and_self_hosted():
     managed = mcp.server_parameters(load_settings({"AWS_MCP_MODE": "managed", "AWS_MCP_ENDPOINT": "https://x/mcp"}), {})
-    assert managed.command == "uvx" and managed.args == [f"mcp-proxy-for-aws-cli@{mcp.MCP_PROXY_VERSION}", "https://x/mcp"]
+    # Final-review fix F3: the image pre-installs both servers; launch the installed binaries, never uvx.
+    assert managed.command == "mcp-proxy-for-aws-cli" and managed.args == ["https://x/mcp"]
     own = mcp.server_parameters(load_settings({"AWS_MCP_MODE": "self-hosted", "DBOPS_AWS_REGIONS": "eu-west-1,us-east-1"}),
                                 {"AWS_PROFILE": "demo", "PATH": "/bin"})
-    assert own.args == [f"awslabs.aws-api-mcp-server@{mcp.SELF_HOSTED_VERSION}"]
+    assert own.command == "awslabs.aws-api-mcp-server" and own.args == []
+    assert own.env["PATH"] == "/bin"
     assert own.env["READ_OPERATIONS_ONLY"] == "true" and own.env["AWS_REGION"] == "eu-west-1"
     assert own.env["AWS_PROFILE"] == "demo"
+
+
+def test_mcp_client_startup_timeout(monkeypatch):
+    built = {}
+
+    class FakeClient:
+        def __init__(self, transport, **kwargs):
+            built.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def list_tools_sync(self, pagination_token=None):
+            return tools("aws___call_aws")
+
+    monkeypatch.setattr(mcp, "MCPClient", FakeClient)
+    with mcp.aws_tools_provider(load_settings({}))() as offered:
+        assert names(offered) == ["aws___call_aws"]
+    assert built["startup_timeout"] == 90
 
 
 def test_build_from_env(monkeypatch, users_file, tmp_path):

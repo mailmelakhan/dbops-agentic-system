@@ -15,7 +15,7 @@ _spec = importlib.util.spec_from_file_location("agent_api_test_fakes", Path(__fi
 fakes = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = fakes
 _spec.loader.exec_module(fakes)
-ScriptedModel, fake_call_aws = fakes.ScriptedModel, fakes.fake_call_aws
+ScriptedModel, fake_call_aws, mcp_error_text = fakes.ScriptedModel, fakes.fake_call_aws, fakes.mcp_error_text
 
 ARN = "arn:aws:rds:us-east-1:123:db:"
 CALLERS = {"lakhan": Caller("lakhan", Role.PRIVILEGED), "geeta": Caller("geeta", Role.SAFE_WRITE),
@@ -112,7 +112,7 @@ def test_happy_path_events(world):
     assert [e["seq"] for e in events] == [1, 2, 3, 4, 5, 6]
     started, finished = events[2], events[3]
     assert started["name"] == "rds.describe_db_instances"
-    assert started["args"] == {"command": "aws rds describe-db-instances"}
+    assert started["args"] == {"command": "aws rds describe-db-instances --region us-east-1"}  # as sent
     assert finished["status"] == "ok" and finished["tool_call_id"] == started["tool_call_id"]
     assert [r["DBInstanceIdentifier"] for r in finished["result"]["DBInstances"]] == ["prod-a"]
     assert "other-db" not in json.dumps(finished["result"])
@@ -349,7 +349,15 @@ def test_default_model_is_deepseek(settings):
     ({"command": "aws rds describe-db-instances"}, "aws rds describe-db-instances"),
     ({"cli_command": "aws rds describe-db-instances"}, "aws rds describe-db-instances"),
     ({"cli_command": ["aws rds describe-db-instances"]}, None),
-    ({"cli_command": "aws rds describe-db-instances", "max_results": 5}, None),
+    ({"cli_command": "aws rds describe-db-instances", "max_results": 5}, "aws rds describe-db-instances"),
+    ({"command": "aws rds describe-db-instances", "max_results": None}, "aws rds describe-db-instances"),
+    ({"command": "aws rds describe-db-instances", "max_results": 1000}, "aws rds describe-db-instances"),
+    ({"command": "aws rds describe-db-instances", "max_results": 0}, None),
+    ({"command": "aws rds describe-db-instances", "max_results": 1001}, None),
+    ({"command": "aws rds describe-db-instances", "max_results": "5"}, None),
+    ({"command": "aws rds describe-db-instances", "max_results": True}, None),
+    ({"command": "aws rds describe-db-instances", "other": 1}, None),
+    ({"max_results": 5}, None),
     ({}, None),
     ("aws rds describe-db-instances", None),
 ])
@@ -379,5 +387,87 @@ def test_duplicate_tool_use_id_still_filtered(world, turns):
     assert "other-db" not in json.dumps(events)
     assert "other-db" not in json.dumps(w.model.calls[-1]["messages"])
     assert "other-db" not in json.dumps(w.store.list_messages(w.conversation_id))
-    assert w.aws.commands == [DESCRIBE_ALL]
+    assert w.aws.commands == [f"{DESCRIBE_ALL} --region us-east-1"]
     assert [a["result"] for a in w.mock.audits if a["action"] == "chat.tool_call"] == ["refused", "ok"]
+
+
+# ---- Final-review fixes F1, F2, F4
+
+REGIONAL = "aws rds describe-db-instances --region us-east-1"
+SECRET = "Cannot use other-db with prod-a in 123456789012"
+
+
+def test_aws_error_result_readable(world):
+    command = "aws rds describe-db-instances --db-instance-identifier prod-a"
+    responses = {"rds describe-db-instances": mcp_error_text(
+        command, code="InvalidParameterCombination",
+        message=f"An error occurred (InvalidParameterCombination) when calling the DescribeDBInstances operation: {SECRET}")}
+    w = world([[aws(command)], [{"text": "AWS said no."}]], responses=responses)
+    run_id = w.run()
+    events = w.events(run_id)
+    finished = next(e for e in events if e["type"] == "tool_call_finished")
+    assert finished["status"] == "error"
+    assert finished["result"] == {"error": "AWS returned an error", "code": "InvalidParameterCombination"}
+    for seen in (json.dumps(events), json.dumps(w.model.calls[1]["messages"]),
+                 json.dumps(w.store.list_messages(w.conversation_id))):
+        assert SECRET not in seen and "other-db" not in seen
+    assert "AWS returned an error" in json.dumps(w.model.calls[1]["messages"])
+    row = next(a for a in w.mock.audits if a["action"] == "chat.tool_call")
+    assert row["result"] == "error"
+
+
+@pytest.mark.parametrize(("error_text", "code"), [
+    ("Error while executing the command: An error occurred (AccessDenied) when calling X: user other-db", "AccessDenied"),
+    ("Error while executing the command: No AWS credentials found.", None),
+])
+def test_aws_top_level_error_code_parsed(world, error_text, code):
+    command = "aws rds describe-db-instances"
+    w = world([[aws(command)], [{"text": "AWS said no."}]],
+              responses={"rds describe-db-instances": mcp_error_text(command, top_level=error_text)})
+    finished = next(e for e in w.events(w.run()) if e["type"] == "tool_call_finished")
+    expected = {"error": "AWS returned an error"} | ({"code": code} if code else {})
+    assert finished["status"] == "error" and finished["result"] == expected
+    assert "other-db" not in json.dumps(w.model.calls[1]["messages"])
+
+
+def test_aws_validation_failure_readable(world):
+    command = "aws rds describe-db-instances"
+    w = world([[aws(command)], [{"text": "Bad syntax."}]],
+              responses={"rds describe-db-instances": mcp_error_text(command, validation=True)})
+    run_id = w.run()
+    finished = next(e for e in w.events(run_id) if e["type"] == "tool_call_finished")
+    assert finished["status"] == "error"
+    assert finished["result"] == {"error": "The AWS CLI rejected the command syntax"}
+    assert "Invalid choice" not in json.dumps(w.model.calls[1]["messages"])
+
+
+def test_max_results_accepted_and_stripped(world):
+    w = world([[{"tool": "call_aws", "input": {"command": "aws rds describe-db-instances", "max_results": 5}}],
+               [{"text": "prod-a is available."}]])
+    run_id = w.run()
+    finished = next(e for e in w.events(run_id) if e["type"] == "tool_call_finished")
+    assert finished["status"] == "ok"
+    assert [r["DBInstanceIdentifier"] for r in finished["result"]["DBInstances"]] == ["prod-a"]
+    assert w.aws.commands == [REGIONAL]
+    assert w.aws.max_results == [None]  # stripped before the server saw it
+
+
+@pytest.mark.parametrize("max_results", [0, 1001, "5", True])
+def test_bad_max_results_refused(world, max_results):
+    w = world([[{"tool": "call_aws", "input": {"command": "aws rds describe-db-instances",
+                                               "max_results": max_results}}], [{"text": "ok"}]])
+    finished = next(e for e in w.events(w.run()) if e["type"] == "tool_call_finished")
+    assert finished["status"] == "error" and "could not parse command" in json.dumps(finished["result"])
+    assert w.aws.commands == []
+
+
+@pytest.mark.parametrize(("command", "sent"), [
+    ("aws rds describe-db-instances", REGIONAL),
+    ("aws rds describe-db-instances --region us-east-1", REGIONAL),
+    ("aws rds describe-db-instances --region=us-east-1", "aws rds describe-db-instances --region=us-east-1"),
+])
+def test_region_injected_when_absent(world, command, sent):
+    w = world([[aws(command)], [{"text": "ok"}]])
+    finished = next(e for e in w.events(w.run()) if e["type"] == "tool_call_finished")
+    assert finished["status"] == "ok"
+    assert w.aws.commands == [sent]

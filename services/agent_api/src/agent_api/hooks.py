@@ -9,25 +9,45 @@ from typing import Any
 
 from strands.hooks import AfterToolCallEvent, BeforeToolCallEvent, HookProvider, HookRegistry
 
-from agent_api.guard import UNPARSEABLE, check_command, step_name, target_region
+from agent_api.guard import UNPARSEABLE, check_command, pin_region, step_name, target_region
 from agent_api.identity import Caller
-from agent_api.result_filter import filter_result, truncate, unwrap_tool_result
+from agent_api.result_filter import aws_failure, filter_result, truncate, unwrap_tool_result
 from agent_api.scope import ScopeSet
 
 log = logging.getLogger(__name__)
 # The AWS API MCP server names its command argument cli_command; our fakes and older docs say command.
 COMMAND_KEYS = ("command", "cli_command")
+# call_aws also takes an optional max_results; it is accepted from the model but stripped before the call.
+MAX_RESULTS = "max_results"
+_MAX_RESULTS_RANGE = range(1, 1001)
 _DB_FLAGS = ("--db-instance-identifier", "--db-cluster-identifier", "--source-identifier", "--resource-name")
 LIMIT_REASON = "tool call limit reached for this run"
 CANCELLED_REASON = "run cancelled"
 
 
 def aws_command(tool_input: Any) -> str | None:
-    """The single command string of an AWS tool call, or None if the input is anything else."""
-    if not isinstance(tool_input, dict) or len(tool_input) != 1:
+    """The single command string of an AWS tool call, or None if the input is anything else.
+
+    Accepted: exactly one command key with a string, plus an optional max_results (None or an int 1..1000).
+    """
+    if not isinstance(tool_input, dict):
         return None
-    key, value = next(iter(tool_input.items()))
+    rest = {k: v for k, v in tool_input.items() if k != MAX_RESULTS}
+    if MAX_RESULTS in tool_input:
+        limit = tool_input[MAX_RESULTS]
+        if limit is not None and (type(limit) is not int or limit not in _MAX_RESULTS_RANGE):
+            return None
+    if len(rest) != 1:
+        return None
+    key, value = next(iter(rest.items()))
     return value if key in COMMAND_KEYS and isinstance(value, str) else None
+
+
+def _prepare_call(tool_input: dict, command: str, regions: tuple[str, ...]) -> None:
+    """Rewrite an allowed call in place to what the server is sent: no max_results, an explicit --region."""
+    tool_input.pop(MAX_RESULTS, None)
+    key = next(k for k in tool_input if k in COMMAND_KEYS)
+    tool_input[key] = pin_region(command, regions)
 
 
 def first_db_reference(command: str) -> str | None:
@@ -100,6 +120,9 @@ class RunHooks(HookProvider):
         elif name in self.aws_tool_names:
             command = aws_command(tool_input)
             reason = UNPARSEABLE if command is None else check_command(command, self.scope_set, self.regions)
+            if reason is None:
+                # Strands passes this same input dict to the tool, so the server sees the rewritten call.
+                _prepare_call(tool_input, command, self.regions)
         if reason is not None:
             event.cancel_tool = reason
         self.emit({"type": "tool_call_started", "tool_call_id": call_id, "name": self._step(name, tool_input),
@@ -115,9 +138,12 @@ class RunHooks(HookProvider):
         original = event.result
         ok = original.get("status") == "success"
         if name in self.aws_tool_names and not refused:
-            command = aws_command(tool_input)
-            region = target_region(command, self.regions)
-            shown, ok = filter_result(unwrap_tool_result(original), self.scope_set, region)
+            failure = aws_failure(original)
+            if failure is not None:
+                shown, ok = failure, False  # fixed text and an error code only; the raw message is logged
+            else:
+                region = target_region(aws_command(tool_input), self.regions)
+                shown, ok = filter_result(unwrap_tool_result(original), self.scope_set, region)
             replace = True
         else:
             shown, replace = _content_value(original), False

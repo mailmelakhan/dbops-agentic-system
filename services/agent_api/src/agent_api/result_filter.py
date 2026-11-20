@@ -3,6 +3,7 @@
 import copy
 import json
 import logging
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -72,7 +73,48 @@ def unwrap_tool_result(tool_result: Any) -> Any:
         return None
 
 
-def _cli_body(tool_result: Any) -> dict[str, Any]:
+AWS_ERROR = "AWS returned an error"
+CLI_REJECTED = "The AWS CLI rejected the command syntax"
+# botocore's ClientError text: "An error occurred (Code) when calling the X operation: ...".
+_ERROR_CODE_IN_MESSAGE = re.compile(r"An error occurred \(([A-Za-z][A-Za-z0-9.]{0,99})\)")
+_ERROR_CODE = re.compile(r"[A-Za-z][A-Za-z0-9.]{0,99}")
+
+
+def aws_failure(tool_result: Any) -> dict[str, str] | None:
+    """A readable error for a `call_aws` result reporting a failed command, else None.
+
+    Only the fixed messages and an AWS error code (a bare token like InvalidParameterCombination) are returned;
+    the raw AWS message can name other databases, so it is logged, never passed on. Anything that isn't a
+    recognised failure returns None and goes through `filter_result` (which withholds what it doesn't know).
+    """
+    try:
+        payload = _tool_payload(tool_result)
+        call = _one_call(payload) if isinstance(payload, list) else payload
+    except Exception:  # noqa: BLE001 - not a recognised failure: the result filter decides
+        return None
+    if not isinstance(call, dict) or not ("response" in call or "cli_command" in call) or not set(call) <= _CALL_KEYS:
+        return None
+    if any(call.get(k) for k in ("validation_failures", "missing_context_failures", "failed_constraints")):
+        log.warning("AWS CLI rejected the command: %.4000r", call)
+        return {"error": CLI_REJECTED}
+    response = call.get("response")
+    response_error = response.get("error") if isinstance(response, dict) else None
+    if call.get("error") is None and response_error is None:
+        return None
+    log.warning("AWS returned an error: %.4000r", call)
+    code = response.get("error_code") if isinstance(response, dict) else None
+    if not (isinstance(code, str) and _ERROR_CODE.fullmatch(code)):
+        code = None
+        for message in (response_error, call.get("error")):
+            match = _ERROR_CODE_IN_MESSAGE.search(message) if isinstance(message, str) else None
+            if match:
+                code = match.group(1)
+                break
+    return {"error": AWS_ERROR, "code": code} if code else {"error": AWS_ERROR}
+
+
+def _tool_payload(tool_result: Any) -> Any:
+    """The parsed JSON text block of a successful ToolResult."""
     if not isinstance(tool_result, dict) or not set(tool_result) <= _TOOL_RESULT_KEYS:
         raise _Withheld("not a ToolResult")
     if tool_result.get("status") != "success" or tool_result.get("isError", False) is not False:
@@ -81,11 +123,20 @@ def _cli_body(tool_result: Any) -> dict[str, Any]:
     if not isinstance(content, list) or len(content) != 1 or not isinstance(content[0], dict) \
             or set(content[0]) != {"text"} or not isinstance(content[0]["text"], str):
         raise _Withheld("content must be exactly one text block")
-    payload = json.loads(content[0]["text"])
+    return json.loads(content[0]["text"])
+
+
+def _one_call(payload: list[Any]) -> dict[str, Any]:
+    """The one CallAWSResponse in a `call_aws` result list."""
+    if len(payload) != 1 or not isinstance(payload[0], dict) or "cli_command" not in payload[0]:
+        raise _Withheld("expected exactly one command result")
+    return payload[0]
+
+
+def _cli_body(tool_result: Any) -> dict[str, Any]:
+    payload = _tool_payload(tool_result)
     if isinstance(payload, list):
-        if len(payload) != 1 or not isinstance(payload[0], dict) or "cli_command" not in payload[0]:
-            raise _Withheld("expected exactly one command result")
-        payload = payload[0]
+        payload = _one_call(payload)
     if not isinstance(payload, dict):
         raise _Withheld("top level is not an object")
     if "response" in payload or "cli_command" in payload:

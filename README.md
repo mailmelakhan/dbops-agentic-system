@@ -65,8 +65,10 @@ approving a change does **not** touch AWS yet (Approvals shows an "Execution is 
      profile). Its tool-result shape has not been verified against a real account, and the extra IAM action it
      needs to be invoked is **not** in `iam-policy.json` because it could not be confirmed from the AWS docs: check
      the "AWS MCP Server" IAM page, add that action yourself, and run the smoke script before relying on it.
-   The command guard and result filter are the same in both modes. Both modes download their package with `uvx` at the
-   first run, so the container needs internet access.
+   The command guard and result filter are the same in both modes. Both servers are pre-installed in the agent-api
+   image (`uv tool install`), so nothing is downloaded at run time; the container still needs internet access to
+   reach AWS and DeepSeek. Every AWS command is sent with an explicit `--region` (the first entry of
+   `DBOPS_AWS_REGIONS` unless the command names one).
 6. **Smoke script.** With the stack up, run it once against your real account before a demo:
 
    ```bash

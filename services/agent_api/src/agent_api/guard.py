@@ -28,20 +28,21 @@ FORBIDDEN_PREFIXES = ("file://", "fileb://", "http://", "https://")
 # so abbreviations, misspellings and flags that could carry a database reference we don't check never run.
 # --query is deliberately absent: a JMESPath literal can relabel out-of-scope rows with an in-scope
 # identifier, defeating the result filter. --output is only accepted as json (checked in _check).
-GLOBAL_FLAGS = frozenset({"--region", "--output", "--no-paginate", "--max-items", "--page-size",
-                          "--starting-token", "--no-cli-pager", "--cli-read-timeout", "--cli-connect-timeout"})
-_RDS_PAGING = frozenset({"--filters", "--max-records", "--marker"})
+# Paging flags (--max-records, --marker, --no-paginate, --max-items, --starting-token, --page-size) are absent
+# on every operation: a page boundary or paging token can carry an out-of-scope identifier.
+GLOBAL_FLAGS = frozenset({"--region", "--output", "--no-cli-pager", "--cli-read-timeout", "--cli-connect-timeout"})
+_RDS_COMMON = frozenset({"--filters"})
 ALLOWED_FLAGS: dict[tuple[str, str], frozenset[str]] = {
-    ("rds", "describe-db-instances"): _RDS_PAGING | {"--db-instance-identifier"},
-    ("rds", "describe-db-clusters"): _RDS_PAGING | {"--db-cluster-identifier"},
-    ("rds", "describe-db-snapshots"): _RDS_PAGING | {"--db-instance-identifier", "--db-snapshot-identifier",
+    ("rds", "describe-db-instances"): _RDS_COMMON | {"--db-instance-identifier"},
+    ("rds", "describe-db-clusters"): _RDS_COMMON | {"--db-cluster-identifier"},
+    ("rds", "describe-db-snapshots"): _RDS_COMMON | {"--db-instance-identifier", "--db-snapshot-identifier",
                                                      "--snapshot-type"},
-    ("rds", "describe-db-cluster-snapshots"): _RDS_PAGING | {"--db-cluster-identifier",
+    ("rds", "describe-db-cluster-snapshots"): _RDS_COMMON | {"--db-cluster-identifier",
                                                              "--db-cluster-snapshot-identifier", "--snapshot-type"},
-    ("rds", "describe-events"): _RDS_PAGING | {"--source-identifier", "--source-type", "--start-time",
+    ("rds", "describe-events"): _RDS_COMMON | {"--source-identifier", "--source-type", "--start-time",
                                                "--end-time", "--duration", "--event-categories"},
-    ("rds", "describe-pending-maintenance-actions"): _RDS_PAGING | {"--resource-identifier"},
-    ("rds", "describe-orderable-db-instance-options"): _RDS_PAGING | {
+    ("rds", "describe-pending-maintenance-actions"): _RDS_COMMON | {"--resource-identifier"},
+    ("rds", "describe-orderable-db-instance-options"): _RDS_COMMON | {
         "--engine", "--engine-version", "--db-instance-class", "--license-model", "--availability-zone-group",
         "--vpc", "--no-vpc"},
     ("rds", "list-tags-for-resource"): frozenset({"--resource-name", "--filters"}),
@@ -55,7 +56,7 @@ ALLOWED_FLAGS: dict[tuple[str, str], frozenset[str]] = {
                                                "--recently-active"}),
     ("cloudwatch", "describe-alarms"): frozenset({
         "--alarm-names", "--alarm-name-prefix", "--alarm-types", "--children-of-alarm-name",
-        "--parents-of-alarm-name", "--state-value", "--action-prefix", "--max-records", "--next-token"}),
+        "--parents-of-alarm-name", "--state-value", "--action-prefix", "--next-token"}),
 }
 # Shared and public snapshot listings would include other accounts' snapshots.
 ALLOWED_SNAPSHOT_TYPES = frozenset({"automated", "manual", "awsbackup"})
@@ -90,6 +91,15 @@ def target_region(command: str, regions: tuple[str, ...]) -> str:
     flags = _parse_flags(tokens[3:], GLOBAL_FLAGS | ALLOWED_FLAGS[(tokens[1], tokens[2])])
     values = _single(flags.get("--region", []))
     return values[-1] if values else regions[0]
+
+
+def pin_region(command: str, regions: tuple[str, ...]) -> str:
+    """The command as sent: with `--region <regions[0]>` appended unless it names a region already, so it runs
+    in the region the guard and the result filter assumed (the server's own default may differ).
+    Only for a command the guard allowed."""
+    if any(tok == "--region" or tok.startswith("--region=") for tok in _tokenize(command)[3:]):
+        return command
+    return f"{command} --region {shlex.quote(regions[0])}"
 
 
 def step_name(command: str) -> str:

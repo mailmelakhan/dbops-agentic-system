@@ -119,6 +119,7 @@ def describe_instance(stub, ident, cls, window, cluster=None):
 
 def test_resize_aurora_reader_impact(proposer, aws, mock):
     describe_instance(aws[1], "aur-1-r", "db.r6g.large", "sun:03:00-sun:03:30")
+    describe_cluster(aws[1], "aur-1", [("aur-1-w", True), ("aur-1-r", False)])
     proposer.modify_instance_class(PRIV, "c1", "aur-1-r", "db.r6g.xlarge")
     b = mock.bodies[0]
     assert b["params"] == {"from_class": "db.r6g.large", "to_class": "db.r6g.xlarge",
@@ -133,6 +134,7 @@ def test_resize_aurora_reader_impact(proposer, aws, mock):
 
 def test_resize_writer_and_plain_impact(proposer, aws, mock):
     describe_instance(aws[1], "aur-1-w", "db.r6g.large", "sun:03:00-sun:03:30")
+    describe_cluster(aws[1], "aur-1", [("aur-1-w", True), ("aur-1-r", False)])
     describe_instance(aws[1], "pg-1", "db.t3.micro", "sun:03:00-sun:03:30")
     proposer.modify_instance_class(PRIV, None, "aur-1-w", "db.r6g.xlarge")
     proposer.modify_instance_class(PRIV, None, "pg-1", "db.t3.small")
@@ -277,6 +279,7 @@ def test_bodies_validate(aws, users_file, contract, client_transport_cls):
             {"DBClusterIdentifier": "aur-1"})
         orderable(stub, "aurora-postgresql", ["db.t4g.medium"])
         describe_instance(stub, "aur-1-r", "db.r6g.large", "sun:03:00-sun:03:30")
+        describe_cluster(stub, "aur-1", [("aur-1-w", True), ("aur-1-r", False)])
         crs = [p.modify_tags(SAFE, "c1", "pg-1", {"team": "dba"}, []),
                p.create_snapshot(SAFE, None, "aur-1"),
                p.restore_test(PRIV, None, "aur-1"),
@@ -289,3 +292,21 @@ def test_bodies_validate(aws, users_file, contract, client_transport_cls):
                                   "components": doc["components"]}).validate(cr)
     finally:
         transport.close()
+
+
+def describe_cluster(stub, cluster, members):
+    stub.add_response("describe_db_clusters", {"DBClusters": [{"DBClusterIdentifier": cluster, "DBClusterMembers": [
+        {"DBInstanceIdentifier": m, "IsClusterWriter": w} for m, w in members]}]}, {"DBClusterIdentifier": cluster})
+
+
+# Final-review fix F5: the writer is tagged but its cluster isn't, so scope has no cluster members to look at.
+def test_member_only_tagged_writer_impact(aws, mock):
+    scope = ScopeSet([sdb("aur-2-w", engine="aurora-postgresql", cls="db.r6g.large", cluster="aur-2")])
+    resolver = type("R", (), {"current": lambda self: scope})()
+    proposer = Proposer(resolver, lambda region: aws[0], mock, PRICES, clock=lambda: NOW)
+    describe_instance(aws[1], "aur-2-w", "db.r6g.large", "sun:03:00-sun:03:30")
+    describe_cluster(aws[1], "aur-2", [("aur-2-w", True), ("aur-2-r", False)])
+    proposer.modify_instance_class(PRIV, None, "aur-2-w", "db.r6g.xlarge")
+    assert mock.bodies[0]["impact"].startswith("Writer instance")
+    assert mock.bodies[0]["params"]["cluster_identifier"] == "aur-2"
+    aws[1].assert_no_pending_responses()
