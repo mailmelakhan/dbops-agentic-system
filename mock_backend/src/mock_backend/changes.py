@@ -78,12 +78,18 @@ def _impact_and_rollback(cr_id: str, change_type: str, params: dict) -> tuple[st
 
 def new_change_request(state: MockState, *, change_type: str, database: dict, requested_by: str, params: dict,
                        diff: list[dict], summary: str, now: datetime, conversation_id: str | None = None,
-                       rollback_of: str | None = None, requested_via: str = "chat") -> dict:
+                       rollback_of: str | None = None, requested_via: str = "chat", impact: str | None = None,
+                       rollback_plan: list[str] | None = None, maintenance_window: dict | None = None) -> dict:
     cr_id = f"CR-{state.next_cr_number:04d}"
     state.next_cr_number += 1
     tier = RISK_TIER[change_type]
-    impact, rollback_plan = _impact_and_rollback(cr_id, change_type, params)
-    if tier == "HIGH":
+    if impact is None or rollback_plan is None:
+        default_impact, default_plan = _impact_and_rollback(cr_id, change_type, params)
+        impact = default_impact if impact is None else impact
+        rollback_plan = default_plan if rollback_plan is None else rollback_plan
+    if maintenance_window is not None:
+        window = maintenance_window
+    elif tier == "HIGH":
         window = {"required": True, "window": MAINTENANCE_WINDOW, "inside_now": False,
                   "next_start": iso(next_window_start(now))}
     else:
