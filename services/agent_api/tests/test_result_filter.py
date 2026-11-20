@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from agent_api.result_filter import WITHHELD, filter_result, truncate
+from agent_api.result_filter import WITHHELD, filter_result, truncate, unwrap_tool_result
 from agent_api.scope import ScopedDb, ScopeSet
 
 REGION = "us-east-1"
@@ -252,3 +252,64 @@ def test_truncate_20kb():
     out, truncated = truncate(big)
     assert truncated is True
     assert len(out["preview"].encode()) <= 20480
+
+
+CLI_BODY = {"DBInstances": [{"DBInstanceIdentifier": "prod-a", "DBInstanceArn": arn("db", "prod-a")},
+                            {"DBInstanceIdentifier": "other-db", "DBInstanceArn": arn("db", "other-db")}]}
+META = {"RequestId": "r-1", "HTTPStatusCode": 200}
+
+
+def tool_result(text, **extra):
+    return {"toolUseId": "tu-1", "status": "success", "content": [{"text": text}], **extra}
+
+
+def server_text(response=None, json_key="as_json", body=CLI_BODY, **overrides):
+    """awslabs.aws-api-mcp-server 1.6.1: a JSON list of CallAWSResponse, one per command."""
+    inner = response if response is not None else {
+        "error": None, "status_code": 200, "error_code": None, "pagination_token": None,
+        json_key: json.dumps({**body, "ResponseMetadata": META})}
+    item = {"cli_command": "aws rds describe-db-instances", "response": inner,
+            "metadata": {"service": "rds", "operation": "DescribeDBInstances", "region_name": "us-east-1"},
+            "validation_failures": None, "missing_context_failures": None, "failed_constraints": None}
+    return json.dumps([{**item, **overrides}])
+
+
+@pytest.mark.parametrize("result", [
+    tool_result(server_text()),
+    tool_result(server_text(json_key="json")),
+    tool_result(server_text(), structuredContent={"result": [{"leak": "other-db"}]}, isError=False,
+                metadata={"fastmcp": {}}),
+    tool_result(json.dumps({"response": {"json": json.dumps(CLI_BODY), "error": None, "status_code": 200},
+                            "metadata": {}})),
+    tool_result(json.dumps(CLI_BODY)),
+])
+def test_unwrap_tool_result_forms(result):
+    out, ok = run(unwrap_tool_result(result))
+    assert ok and ids(out["DBInstances"], "DBInstanceIdentifier") == ["prod-a"]
+
+
+@pytest.mark.parametrize("result", [
+    {**tool_result(server_text()), "status": "error"},
+    tool_result(server_text(), isError=True),
+    {"toolUseId": "tu-1", "status": "success", "content": [{"text": "{}"}, {"text": "{}"}]},
+    {"toolUseId": "tu-1", "status": "success", "content": []},
+    {"toolUseId": "tu-1", "status": "success", "content": [{"json": CLI_BODY}]},
+    tool_result(server_text(), surprise=1),
+    tool_result("not json"),
+    tool_result(json.dumps([json.loads(server_text())[0]] * 2)),  # two commands
+    tool_result(server_text(error="AccessDenied")),
+    tool_result(server_text(response={"error": "boom", "status_code": 400, "as_json": None})),
+    tool_result(server_text(response={"error": None, "status_code": 200})),
+    tool_result(server_text(response={"error": None, "status_code": 200, "json": "{}", "as_json": "{}"})),
+    tool_result(server_text(validation_failures=[{"reason": "bad"}])),
+    tool_result(server_text(response={"response": "alias output", "error": None})),
+    tool_result(json.dumps({"response": {"json": json.dumps(CLI_BODY)}, "extra": 1})),
+    "not a dict",
+])
+def test_unwrap_tool_result_withholds(result):
+    assert run(unwrap_tool_result(result)) == WITHHELD_RESULT
+
+
+def test_unwrap_drops_response_metadata_only():
+    body = unwrap_tool_result(tool_result(server_text()))
+    assert "ResponseMetadata" not in body and set(body) == {"DBInstances"}

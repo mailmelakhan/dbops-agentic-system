@@ -84,6 +84,14 @@ def check_command(command: str, scope: ScopeSet, regions: tuple[str, ...]) -> st
     return None
 
 
+def target_region(command: str, regions: tuple[str, ...]) -> str:
+    """The region a command the guard allowed will run in: the last --region given, else regions[0]."""
+    tokens = _tokenize(command)
+    flags = _parse_flags(tokens[3:], GLOBAL_FLAGS | ALLOWED_FLAGS[(tokens[1], tokens[2])])
+    values = _single(flags.get("--region", []))
+    return values[-1] if values else regions[0]
+
+
 def step_name(command: str) -> str:
     try:
         tokens = shlex.split(command)

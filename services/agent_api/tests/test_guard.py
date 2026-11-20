@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from agent_api.guard import ALLOWED_OPERATIONS, check_command, step_name
+from agent_api.guard import ALLOWED_OPERATIONS, check_command, step_name, target_region
 from agent_api.scope import ScopedDb, ScopeSet
 
 REGIONS = ("us-east-1",)
@@ -306,3 +306,14 @@ def test_step_name():
     assert step_name("aws rds 'unbalanced") == "aws"
     assert step_name("") == "aws"
     assert step_name("ls -la") == "aws"
+
+
+@pytest.mark.parametrize("command,region", [
+    ("aws rds describe-db-instances", "us-east-1"),
+    ("aws rds describe-db-instances --region eu-west-1", "eu-west-1"),
+    ("aws rds describe-db-instances --region=eu-west-1", "eu-west-1"),
+    ("aws rds describe-db-instances --region us-east-1 --region eu-west-1", "eu-west-1"),
+])
+def test_target_region_matches_guard(command, region):
+    assert check_command(command, SCOPE, ("us-east-1", "eu-west-1")) is None
+    assert target_region(command, ("us-east-1", "eu-west-1")) == region

@@ -48,6 +48,69 @@ def truncate(result: Any, limit: int = RESULT_LIMIT) -> tuple[Any, bool]:
     return {"preview": text[:limit]}, True
 
 
+# Keys of a Strands ToolResult as built by strands.tools.mcp.MCPClient._handle_tool_result (strands 1.65).
+_TOOL_RESULT_KEYS = frozenset({"toolUseId", "status", "content", "structuredContent", "metadata", "isError"})
+# awslabs.aws-api-mcp-server 1.6.1 `call_aws`: a JSON list with one CallAWSResponse per command, each
+# {"cli_command", "response": {"error", "status_code", "error_code", "pagination_token", "as_json"}, "metadata",
+#  "validation_failures", "missing_context_failures", "failed_constraints"} (an error sets a top-level "error").
+# The managed server's wrapper is unverified; {"response": {"json": ...}, "metadata": ...} is also accepted.
+_CALL_KEYS = frozenset({"cli_command", "response", "metadata", "validation_failures", "missing_context_failures",
+                        "failed_constraints", "error"})
+_RESPONSE_KEYS = frozenset({"error", "status_code", "error_code", "pagination_token", "json", "as_json"})
+
+
+def unwrap_tool_result(tool_result: Any) -> Any:
+    """The AWS CLI output inside a `call_aws` ToolResult, for `filter_result`.
+
+    Returns None (which `filter_result` withholds) for an error result or any shape it doesn't recognise.
+    Only the text block is read; structuredContent and metadata are ignored, never passed on.
+    """
+    try:
+        return _cli_body(tool_result)
+    except Exception as exc:  # noqa: BLE001 - any surprise must withhold, never pass data
+        log.warning("tool result withheld (%s): %.4000r", exc, tool_result)
+        return None
+
+
+def _cli_body(tool_result: Any) -> dict[str, Any]:
+    if not isinstance(tool_result, dict) or not set(tool_result) <= _TOOL_RESULT_KEYS:
+        raise _Withheld("not a ToolResult")
+    if tool_result.get("status") != "success" or tool_result.get("isError", False) is not False:
+        raise _Withheld("tool returned an error")
+    content = tool_result.get("content")
+    if not isinstance(content, list) or len(content) != 1 or not isinstance(content[0], dict) \
+            or set(content[0]) != {"text"} or not isinstance(content[0]["text"], str):
+        raise _Withheld("content must be exactly one text block")
+    payload = json.loads(content[0]["text"])
+    if isinstance(payload, list):
+        if len(payload) != 1 or not isinstance(payload[0], dict) or "cli_command" not in payload[0]:
+            raise _Withheld("expected exactly one command result")
+        payload = payload[0]
+    if not isinstance(payload, dict):
+        raise _Withheld("top level is not an object")
+    if "response" in payload or "cli_command" in payload:
+        payload = _call_response(payload)
+    payload.pop("ResponseMetadata", None)  # request id, HTTP status and headers: no database data
+    return payload
+
+
+def _call_response(call: dict[str, Any]) -> dict[str, Any]:
+    if not set(call) <= _CALL_KEYS or call.get("error") is not None:
+        raise _Withheld("command failed or has unknown keys")
+    if any(call.get(k) for k in ("validation_failures", "missing_context_failures", "failed_constraints")):
+        raise _Withheld("command failed validation")
+    response = call.get("response")
+    if not isinstance(response, dict) or not set(response) <= _RESPONSE_KEYS or response.get("error") is not None:
+        raise _Withheld("response is an error or has unknown keys")
+    bodies = [response[k] for k in ("json", "as_json") if response.get(k) is not None]
+    if len(bodies) != 1 or not isinstance(bodies[0], str):
+        raise _Withheld("response must carry exactly one JSON body")
+    body = json.loads(bodies[0])
+    if not isinstance(body, dict):
+        raise _Withheld("body is not an object")
+    return body
+
+
 def _unwrap(raw: Any) -> dict[str, Any]:
     if isinstance(raw, dict) and "content" in raw:
         if not set(raw) <= _ENVELOPE_KEYS or raw.get("isError", False) is not False:
