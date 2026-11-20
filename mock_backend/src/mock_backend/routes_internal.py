@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from mock_backend.changes import audit_row, new_change_request, public
+from mock_backend.clock import parse_iso
 from mock_backend.errors import ApiProblem
 from mock_backend.identity import InternalCallerDep
 from mock_backend.state import StateDep, now_of
@@ -64,9 +65,15 @@ def create_change_request(body: ChangeRequestBody, request: Request, _: Internal
 @router.post("/audit", status_code=201)
 def create_audit_row(body: AuditBody, request: Request, _: InternalCallerDep, state: StateDep):
     _known_user(request, body.user)
+    when = now_of(request)
+    if body.ts is not None:
+        try:
+            when = parse_iso(body.ts)
+        except ValueError:
+            when = None
+        if when is None or when.tzinfo is None:
+            raise ApiProblem(422, "validation_error", f"ts: not an ISO-8601 timestamp with zone: {body.ts!r}")
     with state.lock:
-        audit_row(state, now=now_of(request), user=body.user, action=body.action, result=body.result,
+        audit_row(state, now=when, user=body.user, action=body.action, result=body.result,
                   tool=body.tool, database=body.database, detail=body.detail or "")
-        if body.ts is not None:
-            state.audit[-1]["ts"] = body.ts
         return dict(state.audit[-1])

@@ -70,3 +70,18 @@ def test_executor_runs_unknown_database(client, clock, change_type, kind):
     assert c.post(f"/change-requests/{cr_id}/approve", json={"mode": "now"}).status_code == 202
     clock.advance(30)
     assert c.get(f"/change-requests/{cr_id}").json()["status"] == "succeeded"
+
+
+def test_internal_audit_ts_override(client):
+    c = client("geeta")
+    body = {"user": "geeta", "action": "chat.tool_call", "database": "ts-db", "result": "ok",
+            "ts": "2026-11-15T09:00:00Z"}
+    assert c.post("/internal/audit", json=body, headers=INTERNAL).status_code == 201
+    items = c.get("/audit?database=ts-db").json()["items"]
+    assert items[0]["ts"] == "2026-11-15T09:00:00Z"
+
+
+def test_internal_audit_bad_ts(client):
+    body = {"user": "geeta", "action": "x", "result": "ok", "ts": "yesterday"}
+    r = client("geeta").post("/internal/audit", json=body, headers=INTERNAL)
+    assert (r.status_code, r.json()["error"]["code"]) == (422, "validation_error")
