@@ -13,7 +13,7 @@ from strands.models import Model
 class ScriptedModel(Model):
     """Plays one scripted turn per model call.
 
-    A turn is a list of `{"text": str}` / `{"tool": name, "input": dict}` items, or an exception instance
+    A turn is a list of `{"text": str}` / `{"tool": name, "input": dict, "id"?: toolUseId}` items, or an exception instance
     (raised from `stream()`). A turn whose list ends with an exception yields the items before it, then raises.
     Each call records the messages, system prompt and tool names it was given.
     """
@@ -53,8 +53,8 @@ class ScriptedModel(Model):
                 yield {"contentBlockDelta": {"delta": {"text": item["text"]}}}
             else:
                 used_tool = True
-                yield {"contentBlockStart": {"start": {"toolUse": {"name": item["tool"],
-                                                                   "toolUseId": f"tu-{index + 1}-{n + 1}"}}}}
+                use_id = item.get("id", f"tu-{index + 1}-{n + 1}")
+                yield {"contentBlockStart": {"start": {"toolUse": {"name": item["tool"], "toolUseId": use_id}}}}
                 yield {"contentBlockDelta": {"delta": {"toolUse": {"input": json.dumps(item["input"])}}}}
             yield {"contentBlockStop": {}}
         yield {"messageStop": {"stopReason": "tool_use" if used_tool else "end_turn"}}

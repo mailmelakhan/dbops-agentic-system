@@ -73,8 +73,7 @@ class RunHooks(HookProvider):
         self.clock = clock
         self.calls = 0
         self.limit_reached = False
-        self._started: dict[str, float] = {}
-        self._refused: set[str] = set()
+        self._started: dict[str, float] = {}  # by toolUseId; popped by the after-hook (ids can repeat)
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         registry.add_callback(BeforeToolCallEvent, self.before_tool)
@@ -103,7 +102,6 @@ class RunHooks(HookProvider):
             reason = UNPARSEABLE if command is None else check_command(command, self.scope_set, self.regions)
         if reason is not None:
             event.cancel_tool = reason
-            self._refused.add(call_id)
         self.emit({"type": "tool_call_started", "tool_call_id": call_id, "name": self._step(name, tool_input),
                    "args": tool_input if isinstance(tool_input, dict) else {"input": tool_input}})
         self._started[call_id] = self.clock()
@@ -111,7 +109,9 @@ class RunHooks(HookProvider):
     def after_tool(self, event: AfterToolCallEvent) -> None:
         tool_use = event.tool_use
         name, tool_input, call_id = tool_use["name"], tool_use.get("input"), str(tool_use["toolUseId"])
-        refused = call_id in self._refused
+        # Decided from the event, never from per-id state: model-supplied toolUseIds can repeat. Strands sets
+        # cancel_message only when a BeforeToolCallEvent hook cancelled this call, so the tool never ran.
+        refused = event.cancel_message is not None
         original = event.result
         ok = original.get("status") == "success"
         if name in self.aws_tool_names and not refused:

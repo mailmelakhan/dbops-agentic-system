@@ -357,3 +357,27 @@ def test_aws_command_input(tool_input, command):
     from agent_api.hooks import aws_command
 
     assert aws_command(tool_input) == command
+
+
+DELETE = "aws rds delete-db-instance --db-instance-identifier prod-a"
+DESCRIBE_ALL = "aws rds describe-db-instances"
+
+
+@pytest.mark.parametrize("turns", [
+    pytest.param([[{**aws(DELETE), "id": "call_0"}], [{**aws(DESCRIBE_ALL), "id": "call_0"}], [{"text": "Done."}]],
+                 id="later-turn"),
+    pytest.param([[{**aws(DELETE), "id": "call_0"}, {**aws(DESCRIBE_ALL), "id": "call_0"}], [{"text": "Done."}]],
+                 id="same-turn"),
+])
+def test_duplicate_tool_use_id_still_filtered(world, turns):
+    w = world(turns)
+    run_id = w.run()
+    events = w.events(run_id)
+    finished = [e for e in events if e["type"] == "tool_call_finished"]
+    assert [f["status"] for f in finished] == ["error", "ok"]
+    assert [r["DBInstanceIdentifier"] for r in finished[1]["result"]["DBInstances"]] == ["prod-a"]
+    assert "other-db" not in json.dumps(events)
+    assert "other-db" not in json.dumps(w.model.calls[-1]["messages"])
+    assert "other-db" not in json.dumps(w.store.list_messages(w.conversation_id))
+    assert w.aws.commands == [DESCRIBE_ALL]
+    assert [a["result"] for a in w.mock.audits if a["action"] == "chat.tool_call"] == ["refused", "ok"]
