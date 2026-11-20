@@ -149,3 +149,36 @@ def test_scopeset_direct_construction():
                   instance_class=None, status="available", cluster=None, members=(),
                   arn="arn:aws:rds:us-east-1:1:db:x")
     assert ScopeSet([db]).contains("X")
+
+
+def test_cluster_and_writer_same_name():
+    e = Env()
+    e.add("us-east-1", [inst("orders", NOTAG, cluster="orders")],
+          [clus("orders", TAG, [("orders", True)])])
+    s = e.resolver().current()
+    assert len(s.all()) == 2
+    assert s.contains("orders", kind="instance") and s.contains("orders", kind="cluster")
+    assert s.contains("arn:aws:rds:us-east-1:123:db:orders")
+    assert s.get("orders", kind="instance").cluster == "orders"
+
+
+def test_member_same_name_as_untagged_cluster():
+    e = Env()
+    e.add("us-east-1", [inst("orders", TAG, cluster="orders")],
+          [clus("orders", NOTAG, [("orders", True)])])
+    s = e.resolver().current()
+    assert not s.contains("orders", kind="cluster")
+    assert not s.contains("arn:aws:rds:us-east-1:1:cluster:orders")
+    assert s.contains("orders", kind="instance")
+
+
+def test_instance_and_cluster_same_name_both_tagged():
+    e = Env()
+    e.add("us-east-1", [inst("x", TAG)], [clus("x", TAG)])
+    s = e.resolver().current()
+    assert {d.kind for d in s.all()} == {"instance", "cluster"}
+    assert s.get("x", kind="instance").kind == "instance"
+    assert s.get("x", kind="cluster").kind == "cluster"
+    assert s.get("x").kind == "instance"
+    assert s.get("arn:aws:rds:us-east-1:123:cluster:x").kind == "cluster"
+    assert not s.contains("arn:aws:rds:us-east-1:123:cluster:x", kind="instance")

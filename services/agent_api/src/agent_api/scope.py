@@ -35,31 +35,32 @@ class ScopeSet:
     def all(self) -> list[ScopedDb]:
         return list(self._dbs)
 
-    def _find(self, identifier: str, region: str | None) -> ScopedDb | None:
-        kind = None
+    def _find(self, identifier: str, region: str | None, kind: str | None) -> ScopedDb | None:
         m = _ARN.match(identifier.strip())
         if m:
             arn_region, arn_kind, identifier = m.group(1), m.group(2).lower(), m.group(3)
-            kind = "instance" if arn_kind == "db" else "cluster"
+            arn_kind = "instance" if arn_kind == "db" else "cluster"
+            if kind is not None and kind != arn_kind:
+                return None
             if region is not None and region.lower() != arn_region.lower():
                 return None
-            region = arn_region
+            region, kind = arn_region, arn_kind
         ident = identifier.strip().lower()
-        for db in self._dbs:
-            if db.identifier != ident:
-                continue
-            if region is not None and db.region.lower() != region.lower():
-                continue
-            if kind is not None and db.kind != kind:
-                continue
-            return db
+        for want in ((kind,) if kind else ("instance", "cluster")):
+            for db in self._dbs:
+                if db.identifier == ident and db.kind == want and (
+                        region is None or db.region.lower() == region.lower()):
+                    return db
         return None
 
-    def contains(self, identifier: str, region: str | None = None) -> bool:
-        return self._find(identifier, region) is not None
+    def contains(self, identifier: str, region: str | None = None,
+                 kind: Literal["instance", "cluster"] | None = None) -> bool:
+        return self._find(identifier, region, kind) is not None
 
-    def get(self, identifier: str, region: str | None = None) -> ScopedDb | None:
-        return self._find(identifier, region)
+    def get(self, identifier: str, region: str | None = None,
+            kind: Literal["instance", "cluster"] | None = None) -> ScopedDb | None:
+        """With kind=None (and no ARN) the instance match wins, else the cluster match."""
+        return self._find(identifier, region, kind)
 
 
 class ScopeResolver:
@@ -97,12 +98,12 @@ class ScopeResolver:
         clusters = [c for page in client.get_paginator("describe_db_clusters").paginate()
                     for c in page.get("DBClusters", [])]
         by_id = {i["DBInstanceIdentifier"].lower(): i for i in instances}
-        chosen: dict[str, ScopedDb] = {}
+        chosen: dict[tuple[str, str], ScopedDb] = {}
 
         def add_instance(i: dict) -> None:
             ident = i["DBInstanceIdentifier"].lower()
             cluster = i.get("DBClusterIdentifier")
-            chosen[ident] = ScopedDb(
+            chosen[("instance", ident)] = ScopedDb(
                 region=region, identifier=ident, kind="instance", engine=i.get("Engine", ""),
                 instance_class=i.get("DBInstanceClass"), status=i.get("DBInstanceStatus", ""),
                 cluster=cluster.lower() if cluster else None, members=(),
@@ -117,11 +118,11 @@ class ScopeResolver:
             ident = c["DBClusterIdentifier"].lower()
             members = tuple((m["DBInstanceIdentifier"].lower(), bool(m.get("IsClusterWriter")))
                             for m in c.get("DBClusterMembers", []))
-            chosen[ident] = ScopedDb(
+            chosen[("cluster", ident)] = ScopedDb(
                 region=region, identifier=ident, kind="cluster", engine=c.get("Engine", ""),
                 instance_class=None, status=c.get("Status", ""), cluster=None, members=members,
                 arn=c.get("DBClusterArn", ""))
             for member_id, _ in members:
-                if member_id in by_id and member_id not in chosen:
+                if member_id in by_id and ("instance", member_id) not in chosen:
                     add_instance(by_id[member_id])
         return list(chosen.values())
