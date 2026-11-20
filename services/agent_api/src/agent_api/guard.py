@@ -26,7 +26,9 @@ FORBIDDEN_PREFIXES = ("file://", "fileb://", "http://", "https://")
 
 # Flags accepted on every allowed operation. Anything not listed here or in ALLOWED_FLAGS is refused,
 # so abbreviations, misspellings and flags that could carry a database reference we don't check never run.
-GLOBAL_FLAGS = frozenset({"--region", "--output", "--query", "--no-paginate", "--max-items", "--page-size",
+# --query is deliberately absent: a JMESPath literal can relabel out-of-scope rows with an in-scope
+# identifier, defeating the result filter. --output is only accepted as json (checked in _check).
+GLOBAL_FLAGS = frozenset({"--region", "--output", "--no-paginate", "--max-items", "--page-size",
                           "--starting-token", "--no-cli-pager", "--cli-read-timeout", "--cli-connect-timeout"})
 _RDS_PAGING = frozenset({"--filters", "--max-records", "--marker"})
 ALLOWED_FLAGS: dict[tuple[str, str], frozenset[str]] = {
@@ -170,6 +172,9 @@ def _check(command: str, scope: ScopeSet, regions: tuple[str, ...]) -> None:
     if op not in ALLOWED_OPERATIONS.get(service, frozenset()):
         raise _Refused(f"operation not allowed: {service} {op}")
     flags = _parse_flags(tokens[3:], GLOBAL_FLAGS | ALLOWED_FLAGS[(service, op)])
+
+    if any(occ != ["json"] for occ in flags.get("--output", [])):
+        raise _Refused("flag not allowed: --output")
 
     if not regions:
         raise _Refused(UNPARSEABLE)

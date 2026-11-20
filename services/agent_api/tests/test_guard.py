@@ -67,7 +67,7 @@ ALLOWED = [
     "aws cloudwatch list-metrics --namespace AWS/RDS",
     "aws cloudwatch list-metrics --namespace AWS/RDS --dimensions Name=DBInstanceIdentifier,Value=prod-a",
     "aws cloudwatch describe-alarms",
-    "aws rds describe-db-instances --db-instance-identifier prod-a --output json --query 'DBInstances[] | [0]'",
+    "aws rds describe-db-instances --db-instance-identifier prod-a --output json",
 ]
 
 
@@ -141,6 +141,36 @@ def test_guard_refuses_chaining(command):
     ("aws rds describe-db-instances --region=eu-west-1", "region not allowed: eu-west-1"),
 ])
 def test_guard_refuses_flags(command, reason):
+    assert check(command) == reason
+
+
+# Review fix: --query can relabel out-of-scope rows with an in-scope identifier (JMESPath literal).
+@pytest.mark.parametrize("command", [
+    ("aws rds describe-db-instances --query \"{DBInstances: DBInstances[].{DBInstanceIdentifier: 'prod-a', "
+     "Endpoint: Endpoint}}\""),
+    "aws rds describe-db-instances --db-instance-identifier prod-a --query 'DBInstances[] | [0]'",
+    "aws rds describe-db-instances --query=DBInstances",
+    "aws rds describe-db-clusters --query DBClusters",
+    "aws rds describe-events --query Events",
+    f"{GMS} --dimensions Name=DBInstanceIdentifier,Value=prod-a --query Datapoints",
+    "aws cloudwatch describe-alarms --query MetricAlarms",
+])
+def test_guard_refuses_query_relabel(command):
+    assert check(command) == "flag not allowed: --query"
+
+
+@pytest.mark.parametrize("command,reason", [
+    ("aws rds describe-db-instances --output json", None),
+    ("aws rds describe-db-instances --output=json", None),
+    ("aws rds describe-db-instances --output text", "flag not allowed: --output"),
+    ("aws rds describe-db-instances --output table", "flag not allowed: --output"),
+    ("aws rds describe-db-instances --output yaml", "flag not allowed: --output"),
+    ("aws rds describe-db-instances --output yaml-stream", "flag not allowed: --output"),
+    ("aws rds describe-db-instances --output json --output text", "flag not allowed: --output"),
+    ("aws rds describe-db-instances --output", "flag not allowed: --output"),
+    ("aws rds describe-db-instances --output json text", "flag not allowed: --output"),
+])
+def test_guard_output_json_only(command, reason):
     assert check(command) == reason
 
 
