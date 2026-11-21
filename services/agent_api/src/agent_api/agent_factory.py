@@ -3,7 +3,7 @@
 from typing import Any
 
 from strands import Agent
-from strands.models.openai import OpenAIModel
+from strands.models.litellm import LiteLLMModel
 from strands.tools.executors import SequentialToolExecutor
 
 from agent_api.hooks import RunHooks
@@ -18,11 +18,16 @@ def history_messages(history: list[dict]) -> list[dict]:
             for m in history if m["role"] in ("user", "assistant") and m["text"].strip()]
 
 
+def llm_client_args(settings: Settings) -> dict[str, str]:
+    """Only the overrides that are set; otherwise LiteLLM reads the provider's own key variable."""
+    args = {"api_key": settings.llm_api_key, "api_base": settings.llm_api_base}
+    return {k: v for k, v in args.items() if v}
+
+
 def build_agent(settings: Settings, caller: Caller, conversation_id: str, history: list[dict], aws_tools: list,
                 hooks: RunHooks, extra_tools: list, model: Any = None) -> Agent:
     if model is None:
-        model = OpenAIModel(client_args={"api_key": settings.deepseek_api_key, "base_url": settings.deepseek_base_url},
-                            model_id=settings.deepseek_model)
+        model = LiteLLMModel(client_args=llm_client_args(settings), model_id=settings.llm_model)
     return Agent(
         model=model,
         messages=history_messages(history),

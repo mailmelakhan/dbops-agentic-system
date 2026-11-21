@@ -42,8 +42,14 @@ services:
       dockerfile: services/agent_api/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://dbops:dbops@postgres:5432/dbops
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?set DEEPSEEK_API_KEY in .env}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      # LiteLLM model string; agent-api refuses to start if the provider's key is missing.
+      LLM_MODEL: ${LLM_MODEL:-deepseek/deepseek-chat}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_API_BASE: ${LLM_API_BASE:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       DBOPS_SCOPE_TAG_KEY: ${DBOPS_SCOPE_TAG_KEY:-dbops:demo}
       DBOPS_SCOPE_TAG_VALUE: ${DBOPS_SCOPE_TAG_VALUE:-true}
       DBOPS_AWS_REGIONS: ${DBOPS_AWS_REGIONS:-us-east-1}

@@ -15,9 +15,9 @@ def _csv(value: str) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class Settings:
     database_url: str
-    deepseek_api_key: str
-    deepseek_base_url: str
-    deepseek_model: str
+    llm_model: str
+    llm_api_key: str
+    llm_api_base: str
     scope_tag_key: str
     scope_tag_value: str
     aws_regions: tuple[str, ...]
@@ -35,9 +35,11 @@ class Settings:
 def load_settings(env: Mapping[str, str]) -> Settings:
     return Settings(
         database_url=env.get("DATABASE_URL", ""),
-        deepseek_api_key=env.get("DEEPSEEK_API_KEY", ""),
-        deepseek_base_url=env.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        deepseek_model=env.get("DEEPSEEK_MODEL", "deepseek-chat"),
+        # A LiteLLM model string: <provider>/<model>. The provider's key comes from its usual variable
+        # (DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, ...) unless LLM_API_KEY overrides it.
+        llm_model=env.get("LLM_MODEL", "deepseek/deepseek-chat").strip(),
+        llm_api_key=env.get("LLM_API_KEY", ""),
+        llm_api_base=env.get("LLM_API_BASE", ""),
         scope_tag_key=env.get("DBOPS_SCOPE_TAG_KEY", "dbops:demo"),
         scope_tag_value=env.get("DBOPS_SCOPE_TAG_VALUE", "true"),
         aws_regions=_csv(env.get("DBOPS_AWS_REGIONS", "us-east-1")),

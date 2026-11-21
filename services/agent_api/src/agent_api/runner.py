@@ -197,7 +197,7 @@ class Runner:
                             return stop
         except TimeoutError:
             return timed_out
-        except Exception as exc:  # includes openai.APIError
+        except Exception as exc:  # includes LiteLLM and provider API errors
             log.warning("model call failed in run %s", run.run_id, exc_info=True)
             return stop_reason() or {"type": "run_failed", "error": f"The language model call failed: {_short(exc)}"}
         return stop_reason() or {"type": "run_completed"}

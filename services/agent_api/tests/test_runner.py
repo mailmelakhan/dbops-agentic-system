@@ -332,17 +332,31 @@ def test_events_validate_against_contract(world, contract):
                    w.store.list_messages(w.conversation_id))
 
 
-def test_default_model_is_deepseek(settings):
-    from agent_api.agent_factory import build_agent
+def _hooks():
     from agent_api.hooks import RunHooks
-    from strands.models.openai import OpenAIModel
+    return RunHooks("run-1", CALLERS["amit"], SCOPE, ("us-east-1",), {"call_aws"}, lambda e: None, lambda r: None,
+                    15, lambda: False)
 
-    hooks = RunHooks("run-1", CALLERS["amit"], SCOPE, ("us-east-1",), {"call_aws"}, lambda e: None, lambda r: None,
-                     15, lambda: False)
-    agent = build_agent(settings, CALLERS["amit"], "conv-1", [], [], hooks, [])
-    assert isinstance(agent.model, OpenAIModel)
-    assert agent.model.get_config()["model_id"] == "deepseek-chat"
-    assert agent.model.client_args == {"api_key": "", "base_url": "https://api.deepseek.com"}
+
+def test_default_model_is_litellm_deepseek(settings):
+    from agent_api.agent_factory import build_agent
+    from strands.models.litellm import LiteLLMModel
+
+    agent = build_agent(settings, CALLERS["amit"], "conv-1", [], [], _hooks(), [])
+    assert isinstance(agent.model, LiteLLMModel)
+    assert agent.model.get_config()["model_id"] == "deepseek/deepseek-chat"
+    assert agent.model.client_args == {}  # LiteLLM reads the provider's own key variable, e.g. DEEPSEEK_API_KEY
+
+
+def test_llm_model_key_and_base_override():
+    from agent_api.agent_factory import build_agent
+    from agent_api.settings import load_settings
+
+    settings = load_settings({"LLM_MODEL": "anthropic/claude-sonnet-5-5", "LLM_API_KEY": "k",
+                              "LLM_API_BASE": "https://llm.example"})
+    agent = build_agent(settings, CALLERS["amit"], "conv-1", [], [], _hooks(), [])
+    assert agent.model.get_config()["model_id"] == "anthropic/claude-sonnet-5-5"
+    assert agent.model.client_args == {"api_key": "k", "api_base": "https://llm.example"}
 
 
 @pytest.mark.parametrize(("tool_input", "command"), [

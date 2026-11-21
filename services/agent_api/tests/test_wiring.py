@@ -70,3 +70,53 @@ def test_build_from_env(monkeypatch, users_file, tmp_path):
         monkeypatch.setenv(k, v)
     with TestClient(main.build_from_env()) as client:
         assert client.get("/healthz").status_code == 200
+
+
+@pytest.mark.parametrize("env_extra", [{}, {"DEEPSEEK_API_KEY": ""}])
+def test_build_from_env_fails_fast_without_llm_key(monkeypatch, users_file, tmp_path, env_extra):
+    prices = tmp_path / "prices.yaml"
+    prices.write_text("postgres: {}\n")
+    for k in ("DEEPSEEK_API_KEY", "LLM_API_KEY", "LLM_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    env = {"DATABASE_URL": f"sqlite:///{tmp_path / 'a.db'}", "DBOPS_USERS_FILE": str(users_file),
+           "DBOPS_SERVICE_TOKEN": "tok", "DBOPS_PRICES_FILE": str(prices), **env_extra}
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    with pytest.raises(RuntimeError, match="LLM_MODEL deepseek/deepseek-chat needs DEEPSEEK_API_KEY"):
+        main.build_from_env()
+
+
+def test_build_from_env_llm_api_key_is_enough(monkeypatch, users_file, tmp_path):
+    import boto3
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: pytest.fail("boto3 client built at startup"))
+    prices = tmp_path / "prices.yaml"
+    prices.write_text("postgres: {}\n")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    env = {"DATABASE_URL": f"sqlite:///{tmp_path / 'a.db'}", "LLM_API_KEY": "k", "DBOPS_USERS_FILE": str(users_file),
+           "DBOPS_SERVICE_TOKEN": "tok", "DBOPS_PRICES_FILE": str(prices)}
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    with TestClient(main.build_from_env()) as client:
+        assert client.get("/healthz").status_code == 200
+
+
+@pytest.mark.parametrize(("model", "env", "error"), [
+    ("deepseek/deepseek-chat", {"DEEPSEEK_API_KEY": "k"}, None),
+    ("deepseek/deepseek-chat", {}, "needs DEEPSEEK_API_KEY"),
+    ("anthropic/claude-sonnet-5-5", {}, "needs ANTHROPIC_API_KEY"),
+    ("bedrock/anthropic.claude-sonnet-5-5", {}, None),  # AWS credential chain: not checkable here
+])
+def test_check_llm_credentials(monkeypatch, model, env, error):
+    from agent_api.llm_check import check_llm_credentials
+    for k in ("DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    if error is None:
+        check_llm_credentials(model, "", env)
+    else:
+        with pytest.raises(RuntimeError, match=error):
+            check_llm_credentials(model, "", env)
+
+
+def test_check_llm_credentials_api_key_override():
+    from agent_api.llm_check import check_llm_credentials
+    check_llm_credentials("anthropic/claude-sonnet-5-5", "k", {})

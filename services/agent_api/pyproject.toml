@@ -11,7 +11,7 @@ dependencies = [
     "httpx>=0.28",
     "PyYAML>=6",
     "boto3",
-    "strands-agents[openai]",
+    "strands-agents[litellm]",
 ]
 
 [build-system]

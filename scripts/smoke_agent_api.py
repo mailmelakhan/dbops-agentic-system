@@ -1,4 +1,4 @@
-"""Smoke test against a running agent-api (never run in CI; it needs real AWS and DeepSeek behind it).
+"""Smoke test against a running agent-api (never run in CI; it needs real AWS and the configured LLM behind it).
 
     docker compose exec agent-api python /app/scripts/smoke_agent_api.py --base-url http://localhost:8000 \\
         --user lakhan --question "List my databases" [--propose-snapshot <db>]

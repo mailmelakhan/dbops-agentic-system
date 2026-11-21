@@ -8,6 +8,7 @@ import yaml
 from fastapi import FastAPI
 
 from agent_api.app import create_app
+from agent_api.llm_check import check_llm_credentials
 from agent_api.mcp import aws_tools_provider
 from agent_api.mock_client import MockClient
 from agent_api.proposals import Proposer
@@ -19,6 +20,7 @@ from agent_api.store import Store
 
 def build_from_env() -> FastAPI:
     settings = load_settings(os.environ)
+    check_llm_credentials(settings.llm_model, settings.llm_api_key)
     store = Store(settings.database_url)
     rds = partial(boto3.client, "rds")  # boto3 clients are created per region on first use, not at build time
 

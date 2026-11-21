@@ -39,7 +39,7 @@ cd frontend && DBOPS_USERS_FILE=../config/users.yaml DBOPS_SERVICE_TOKEN=dev \
 
 ## Part 2: agent-api
 
-`agent-api` runs the chat agent (DeepSeek through the Strands SDK) against your real AWS account, read-only, and
+`agent-api` runs the chat agent (DeepSeek by default, through the Strands SDK and LiteLLM) against your real AWS account, read-only, and
 keeps conversations in Postgres. Change requests, audit and reports are still served by the mock backend, and
 approving a change does **not** touch AWS yet (Approvals shows an "Execution is simulated" banner).
 
@@ -50,7 +50,7 @@ approving a change does **not** touch AWS yet (Approvals shows an "Execution is 
    `rds:ListTagsForResource` and four read-only CloudWatch actions, no write actions at all. Put its credentials in a
    profile in `~/.aws` and set `AWS_PROFILE` in `.env`. The directory is mounted read-only into the container.
 3. **Data leaves your machine.** Chat messages and the AWS results the agent reads (database names, status, metrics,
-   tags) are sent to DeepSeek. Only tag databases you are happy to show it.
+   tags) are sent to the LLM provider (DeepSeek by default). Only tag databases you are happy to show it.
 4. Copy `.env.example` to `.env`, set `DEEPSEEK_API_KEY`, `AWS_PROFILE` and `DBOPS_SERVICE_TOKEN`, then:
 
    ```bash
@@ -58,6 +58,12 @@ approving a change does **not** touch AWS yet (Approvals shows an "Execution is 
    ```
 
    The frontend is at http://localhost:8501; agent-api is only reachable inside the compose network.
+
+   **Switching the LLM:** set `LLM_MODEL` to any [LiteLLM model string](https://docs.litellm.ai/docs/providers)
+   (`anthropic/...`, `openai/...`, `bedrock/...`, ...) and that provider's key variable (`ANTHROPIC_API_KEY`,
+   `OPENAI_API_KEY`, ...), or `LLM_API_KEY` for any provider. `LLM_API_BASE` points at a custom endpoint. agent-api
+   refuses to start when the key is missing. Bedrock uses `AWS_PROFILE`, whose principal then also needs
+   `bedrock:InvokeModel`. The model must support tool calling; re-run the smoke script after switching.
 5. **AWS MCP server mode** (`AWS_MCP_MODE`):
    - `self-hosted` (default, the verified path): runs `awslabs.aws-api-mcp-server@1.6.1` with `READ_OPERATIONS_ONLY=true`
      and `AWS_REGION` set to the first entry of `DBOPS_AWS_REGIONS`.
@@ -101,7 +107,7 @@ The demo password for every user is `dbops-demo`. Change the hashes in `config/u
 |---|---|---|
 | `AGENT_API_URL`, `EXECUTOR_URL`, `HEALTH_URL` | frontend | Base URLs of the three services (agent-api and the mock) |
 | `EXECUTOR_SIMULATED` | frontend | `true` shows the "Execution is simulated" banner on Approvals (compose sets it) |
-| `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL`, `AWS_PROFILE`, `AWS_MCP_MODE`, `AWS_MCP_ENDPOINT`, `DBOPS_SCOPE_TAG_KEY`, `DBOPS_SCOPE_TAG_VALUE`, `DBOPS_AWS_REGIONS` | agent-api | See Part 2 and `.env.example` |
+| `LLM_MODEL`, `LLM_API_KEY`, `LLM_API_BASE`, `DEEPSEEK_API_KEY` (or another provider's key), `AWS_PROFILE`, `AWS_MCP_MODE`, `AWS_MCP_ENDPOINT`, `DBOPS_SCOPE_TAG_KEY`, `DBOPS_SCOPE_TAG_VALUE`, `DBOPS_AWS_REGIONS` | agent-api | See Part 2 and `.env.example` |
 | `DBOPS_SERVICE_TOKEN` | all | Shared secret sent as `X-DBOps-Service-Token` |
 | `DBOPS_USERS_FILE` | all | Path to `users.yaml` (default `/config/users.yaml`) |
 | `MOCK_TIME_SCALE` | mock | `1.0` for realistic delays, `0` to make runs and changes finish instantly |
