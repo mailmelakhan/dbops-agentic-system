@@ -22,6 +22,12 @@ cp .env.example .env        # then set DBOPS_SERVICE_TOKEN to a secret of your o
 docker compose up --build
 ```
 
+Alternatively pass environment variables explicitly. following example uses gemini model and token, currently deepseek is default, pass `DEEPSEEK_API_KEY` to use that.
+
+```bash
+AWS_PROFILE=default DBOPS_SERVICE_TOKEN=secret-token-value LLM_MODEL=gemini/gemini-3.1-flash-lite GEMINI_API_KEY=<your-api-key> docker compose up --build
+```
+
 Open http://127.0.0.1:8501. Only the frontend publishes a port, and only on localhost.
 
 ## Run it without Docker
