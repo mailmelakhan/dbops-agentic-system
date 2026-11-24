@@ -37,6 +37,44 @@ def test_server_parameters_managed_and_self_hosted():
     assert own.env["AWS_PROFILE"] == "demo"
 
 
+ECS_ENV = {
+    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI": "/v2/credentials/abc",
+    "AWS_CONTAINER_CREDENTIALS_FULL_URI": "http://169.254.170.23/v1/credentials",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN": "tok",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE": "/var/run/secrets/token",
+    "AWS_WEB_IDENTITY_TOKEN_FILE": "/var/run/secrets/eks/token",
+    "AWS_ROLE_ARN": "arn:aws:iam::1:role/dbops-agent",
+    "AWS_ROLE_SESSION_NAME": "dbops",
+    "AWS_STS_REGIONAL_ENDPOINTS": "regional",
+    "AWS_DEFAULT_REGION": "eu-west-1",
+    "AWS_CA_BUNDLE": "/etc/ssl/ca.pem",
+    "SSL_CERT_FILE": "/etc/ssl/ca.pem",
+    "REQUESTS_CA_BUNDLE": "/etc/ssl/ca.pem",
+    "HTTPS_PROXY": "http://proxy:3128",
+    "HTTP_PROXY": "http://proxy:3128",
+    "NO_PROXY": "169.254.170.2,169.254.170.23,localhost",
+    "https_proxy": "http://proxy:3128",
+    "http_proxy": "http://proxy:3128",
+    "no_proxy": "localhost",
+}
+
+
+@pytest.mark.parametrize("mode", ["managed", "self-hosted"])
+def test_server_parameters_pass_task_role_region_proxy_and_ca(mode):
+    """ECS task roles and EKS IRSA reach the MCP server process; otherwise call_aws has no credentials on Fargate
+    and falls back to the instance profile on EC2."""
+    params = mcp.server_parameters(load_settings({"AWS_MCP_MODE": mode}), {**ECS_ENV, "UNRELATED_SECRET": "x",
+                                                                            "DEEPSEEK_API_KEY": "k"})
+    for key, value in ECS_ENV.items():
+        assert params.env[key] == value, key
+    assert "UNRELATED_SECRET" not in params.env and "DEEPSEEK_API_KEY" not in params.env
+
+
+def test_self_hosted_region_pinned_over_environment():
+    params = mcp.server_parameters(load_settings({"DBOPS_AWS_REGIONS": "us-east-1"}), {"AWS_REGION": "ap-south-1"})
+    assert params.env["AWS_REGION"] == "us-east-1"  # the guard checks scope in regions[0]; the server must match
+
+
 def test_mcp_client_startup_timeout(monkeypatch):
     built = {}
 

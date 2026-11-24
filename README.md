@@ -86,6 +86,20 @@ approving a change does **not** touch AWS yet (Approvals shows an "Execution is 
 7. The **fleet panel is still mock data** until part 4 (health-analytics); only Chat and the change-request
    proposals come from agent-api.
 
+### Running agent-api on ECS (or EKS)
+
+- **Credentials:** attach `services/agent_api/iam-policy.json` to the **task role** and do **not** set
+  `AWS_PROFILE` (a profile missing from the container makes boto3 fail instead of using the role). The task role
+  reaches both agent-api and the MCP server process it starts. Avoid relying on an EC2 instance profile: it is the
+  host's role, shared by every task on that host. On EKS, use IRSA or Pod Identity the same way.
+- **Proxy:** if `HTTPS_PROXY` is set, add `169.254.170.2,169.254.170.23` to `NO_PROXY` so the container credentials
+  endpoint isn't sent through the proxy.
+- **Secrets:** inject `DEEPSEEK_API_KEY` (or your provider's key) and `DBOPS_SERVICE_TOKEN` from Secrets Manager or
+  SSM Parameter Store, not as plain environment values.
+- **Everything compose provided:** a managed Postgres for `DATABASE_URL`; `users.yaml` and `prices.yaml` baked into
+  the image or mounted, at `DBOPS_USERS_FILE` / `DBOPS_PRICES_FILE`; service discovery (or Service Connect) names for
+  `MOCK_BACKEND_URL` and the frontend's `AGENT_API_URL`.
+
 Postgres tests are skipped unless you point them at a database:
 `DBOPS_TEST_PG_URL=postgresql+psycopg://user:pw@host/db uv run pytest services/agent_api/tests/test_store_postgres.py`.
 

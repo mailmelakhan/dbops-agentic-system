@@ -19,8 +19,23 @@ MCP_PROXY_BINARY = "mcp-proxy-for-aws-cli"
 SELF_HOSTED_BINARY = "awslabs.aws-api-mcp-server"
 STARTUP_TIMEOUT_SECONDS = 90
 CALL_AWS_NAMES = frozenset({"call_aws", "aws___call_aws"})
-_PASSTHROUGH_ENV = ("PATH", "HOME", "AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
-                    "AWS_SESSION_TOKEN", "AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE")
+# Only what the MCP server needs to reach AWS; app secrets (LLM keys, the service token) are never passed.
+_PASSTHROUGH_ENV = (
+    "PATH", "HOME",
+    # Local / compose: a profile in the mounted ~/.aws, or static keys.
+    "AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    "AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE",
+    # ECS task role (incl. Fargate) and EKS Pod Identity: the container credentials endpoint.
+    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN", "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+    # EKS IAM roles for service accounts (web identity).
+    "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_ARN", "AWS_ROLE_SESSION_NAME", "AWS_STS_REGIONAL_ENDPOINTS",
+    # Region (self-hosted mode overrides AWS_REGION with regions[0] below).
+    "AWS_REGION", "AWS_DEFAULT_REGION",
+    # Corporate proxy and private CA.
+    "AWS_CA_BUNDLE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
+    "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
+)
 
 
 def filter_mcp_tools(tools: Iterable, allowlist: Iterable[str]) -> list:
