@@ -63,7 +63,7 @@ services:
     volumes:
       - ./config/users.yaml:/config/users.yaml:ro
       - ./services/agent_api/prices.yaml:/config/prices.yaml:ro
-      - ~/.aws:/root/.aws:ro
+      - ~/.aws:/root/.aws
     expose:
       - "8000"
     healthcheck:
