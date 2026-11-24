@@ -2,6 +2,7 @@
 
 Date: 2026-11-19
 Status: Draft, awaiting approval (builder check done)
+Amended 2026-11-21: the model is reached through Strands `LiteLLMModel` (not `OpenAIModel`), so the provider can be switched by config. DeepSeek stays the default (§7.1, §10).
 Builds on: `2026-11-14-db-ops-frontend-design.md` (the "part 1 spec"), amended by `2026-11-16-fleet-panel-design.md`. Contract: `contracts/agent-api.yaml`.
 
 ---
@@ -61,7 +62,7 @@ Common to all three, and my call: a Strands agent per run, run in a background t
 ```
  browser ─▶ frontend ──AGENT_API_URL──▶ agent-api ──▶ postgres  (conversations, messages, runs, run events)
                │                          │   │
-               │                          │   ├─▶ DeepSeek API   (via Strands OpenAIModel)
+               │                          │   ├─▶ LLM API        (DeepSeek by default, via Strands LiteLLMModel)
                │                          │   ├─▶ AWS MCP Server (via mcp-proxy-for-aws, SigV4, read-only principal)
                │                          │   ├─▶ AWS RDS API    (boto3: scope lookup, proposal "before" values)
                │                          │   └─▶ mock-backend   (CR / audit / report pass-through + internal writes)
@@ -73,7 +74,7 @@ Common to all three, and my call: a Strands agent per run, run in a background t
 - Add `postgres` (16) and `agent-api`.
 - The frontend's `AGENT_API_URL` points at `agent-api`.
 - Only the frontend still publishes a port.
-- `agent-api` gets AWS credentials (a read-only profile, mounted, or env vars), `DEEPSEEK_API_KEY`, and the shared service token.
+- `agent-api` gets AWS credentials (a read-only profile, mounted, or env vars), the LLM provider's key (`DEEPSEEK_API_KEY` by default), and the shared service token.
 
 **Who owns which endpoint during part 2:**
 
@@ -99,7 +100,7 @@ The pass-through keeps one address for the frontend. In part 3, `agent-api` repl
 
 1. `POST /conversations/{id}/runs` stores the user message and creates a `runs` row with status `running`. It starts a background asyncio task and returns `{run_id}`. If the conversation already has a running run, it returns `409 run_active`.
 2. The task builds a Strands `Agent`:
-   - **Model:** `OpenAIModel` with `client_args={api_key, base_url}` and `model_id` from config.
+   - **Model:** `LiteLLMModel` with `model_id = LLM_MODEL` (a LiteLLM `<provider>/<model>` string, default `deepseek/deepseek-chat`). `client_args` carry only `LLM_API_KEY`/`LLM_API_BASE` when set; otherwise LiteLLM reads the provider's own key variable. agent-api refuses to start when the configured provider's key is missing (cloud-credential providers such as Bedrock are not checked). Why LiteLLM: the user wants to be able to switch provider by config. LiteLLMModel subclasses OpenAIModel in Strands, so tool-call streaming, and the hooks built on it, are unchanged.
    - **System prompt:** §7.6.
    - **History:** this conversation's prior turns from Postgres.
    - **Tools:** §7.2.
@@ -223,9 +224,9 @@ One addition, which is my call. When the frontend env `EXECUTOR_SIMULATED=true` 
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | none | Postgres connection |
-| `DEEPSEEK_API_KEY` | required | LLM key |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | |
+| `LLM_MODEL` | `deepseek/deepseek-chat` | LiteLLM model string |
+| `DEEPSEEK_API_KEY` (or the chosen provider's key variable) | required for the default model | LLM key |
+| `LLM_API_KEY` / `LLM_API_BASE` | unset | optional key and endpoint overrides for any provider |
 | `DBOPS_SCOPE_TAG_KEY` / `DBOPS_SCOPE_TAG_VALUE` | `dbops:demo` / `true` | scope tag |
 | `DBOPS_AWS_REGIONS` | `us-east-1` | comma-separated |
 | `AWS_MCP_ENDPOINT` | the managed AWS MCP Server URL | |

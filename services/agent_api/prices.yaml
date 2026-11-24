@@ -1,0 +1,22 @@
+# Approximate on-demand $/hour, us-east-1. Used only for the restore-test cost estimate shown to
+# approvers; the values are approximate and not a billing source. Shape: engine -> region -> class -> $/h.
+postgres: &small
+  us-east-1:
+    db.t4g.micro: 0.016
+    db.t4g.small: 0.032
+    db.t4g.medium: 0.065
+    db.t3.micro: 0.017
+mysql: *small
+mariadb: *small
+aurora-postgresql:
+  us-east-1:
+    db.t4g.micro: 0.016
+    db.t4g.small: 0.041
+    db.t4g.medium: 0.073
+    db.t3.micro: 0.017
+aurora-mysql:
+  us-east-1:
+    db.t4g.micro: 0.016
+    db.t4g.small: 0.041
+    db.t4g.medium: 0.073
+    db.t3.micro: 0.017

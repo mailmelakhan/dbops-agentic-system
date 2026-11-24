@@ -57,3 +57,21 @@ def test_users_file_has_four_demo_users():
     assert {u["username"]: u["role"] for u in users} == {
         "lakhan": "PRIVILEGED", "ankit": "PRIVILEGED", "geeta": "SAFE-WRITE", "amit": "READ"}
     assert all(bcrypt.checkpw(b"dbops-demo", u["password_hash"].encode()) for u in users)
+
+
+def test_agent_iam_policy_read_only():
+    import json
+    import re
+    policy = json.loads((ROOT / "services/agent_api/iam-policy.json").read_text())
+    allowed = re.compile(r"^(rds:Describe.*|rds:ListTagsForResource"
+                         r"|cloudwatch:(GetMetricData|GetMetricStatistics|ListMetrics|DescribeAlarms))$")
+    forbidden = ("Modify", "Delete", "Create", "Restore", "AddTags", "RemoveTags")
+    actions = []
+    for stmt in policy["Statement"]:
+        assert stmt["Effect"] == "Allow"
+        acts = stmt["Action"] if isinstance(stmt["Action"], list) else [stmt["Action"]]
+        actions += acts
+    assert actions
+    for action in actions:
+        assert allowed.match(action), action
+        assert not any(word in action for word in forbidden), action

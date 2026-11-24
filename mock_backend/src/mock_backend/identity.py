@@ -45,3 +45,14 @@ def get_caller(request: Request) -> Caller:
 
 
 CallerDep = Annotated[Caller, Depends(get_caller)]
+
+
+def get_internal_caller(request: Request) -> Caller:
+    """Like get_caller, but also requires the agent-api marker header."""
+    caller = get_caller(request)
+    if request.headers.get("X-DBOps-Internal") != "agent-api":
+        raise ApiProblem(401, "unauthenticated", "Missing internal caller header")
+    return caller
+
+
+InternalCallerDep = Annotated[Caller, Depends(get_internal_caller)]

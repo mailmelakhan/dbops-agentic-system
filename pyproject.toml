@@ -8,6 +8,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "mock-backend",
+    "agent-api",
     "dbops-frontend",
     "httpx>=0.28",
     "pytest>=8.3",
@@ -23,13 +24,14 @@ package = false
 
 [tool.uv.sources]
 mock-backend = { workspace = true }
+agent-api = { workspace = true }
 dbops-frontend = { workspace = true }
 
 [tool.uv.workspace]
-members = ["mock_backend", "frontend"]
+members = ["mock_backend", "frontend", "services/agent_api"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "mock_backend/tests", "frontend/tests"]
+testpaths = ["tests", "mock_backend/tests", "frontend/tests", "services/agent_api/tests"]
 addopts = "--import-mode=importlib"
 filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]
 

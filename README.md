@@ -37,6 +37,72 @@ cd frontend && DBOPS_USERS_FILE=../config/users.yaml DBOPS_SERVICE_TOKEN=dev \
   uv run streamlit run app.py
 ```
 
+## Part 2: agent-api
+
+`agent-api` runs the chat agent (DeepSeek by default, through the Strands SDK and LiteLLM) against your real AWS account, read-only, and
+keeps conversations in Postgres. Change requests, audit and reports are still served by the mock backend, and
+approving a change does **not** touch AWS yet (Approvals shows an "Execution is simulated" banner).
+
+1. **Tag the databases the agent may see** with `dbops:demo=true` (key and value are `DBOPS_SCOPE_TAG_KEY` and
+   `DBOPS_SCOPE_TAG_VALUE`). Untagged databases are invisible to the agent. A tagged Aurora cluster brings in its members.
+2. **Create a dedicated read-only principal** (IAM user or role) and attach
+   [`services/agent_api/iam-policy.json`](services/agent_api/iam-policy.json) to it: `rds:Describe*`,
+   `rds:ListTagsForResource` and four read-only CloudWatch actions, no write actions at all. Put its credentials in a
+   profile in `~/.aws` and set `AWS_PROFILE` in `.env`. The directory is mounted read-only into the container.
+3. **Data leaves your machine.** Chat messages and the AWS results the agent reads (database names, status, metrics,
+   tags) are sent to the LLM provider (DeepSeek by default). Only tag databases you are happy to show it.
+4. Copy `.env.example` to `.env`, set `DEEPSEEK_API_KEY`, `AWS_PROFILE` and `DBOPS_SERVICE_TOKEN`, then:
+
+   ```bash
+   docker compose up --build
+   ```
+
+   The frontend is at http://localhost:8501; agent-api is only reachable inside the compose network.
+
+   **Switching the LLM:** set `LLM_MODEL` to any [LiteLLM model string](https://docs.litellm.ai/docs/providers)
+   (`anthropic/...`, `openai/...`, `bedrock/...`, ...) and that provider's key variable (`ANTHROPIC_API_KEY`,
+   `OPENAI_API_KEY`, ...), or `LLM_API_KEY` for any provider. `LLM_API_BASE` points at a custom endpoint. agent-api
+   refuses to start when the key is missing. Bedrock uses `AWS_PROFILE`, whose principal then also needs
+   `bedrock:InvokeModel`. The model must support tool calling; re-run the smoke script after switching.
+5. **AWS MCP server mode** (`AWS_MCP_MODE`):
+   - `self-hosted` (default, the verified path): runs `awslabs.aws-api-mcp-server@1.6.1` with `READ_OPERATIONS_ONLY=true`
+     and `AWS_REGION` set to the first entry of `DBOPS_AWS_REGIONS`.
+   - `managed`: the AWS MCP Server at `AWS_MCP_ENDPOINT` through `mcp-proxy-for-aws-cli@2.0.0` (SigV4 with the same
+     profile). Its tool-result shape has not been verified against a real account, and the extra IAM action it
+     needs to be invoked is **not** in `iam-policy.json` because it could not be confirmed from the AWS docs: check
+     the "AWS MCP Server" IAM page, add that action yourself, and run the smoke script before relying on it.
+   The command guard and result filter are the same in both modes. Both servers are pre-installed in the agent-api
+   image (`uv tool install`), so nothing is downloaded at run time; the container still needs internet access to
+   reach AWS and DeepSeek. Every AWS command is sent with an explicit `--region` (the first entry of
+   `DBOPS_AWS_REGIONS` unless the command names one).
+6. **Smoke script.** With the stack up, run it once against your real account before a demo:
+
+   ```bash
+   docker compose exec agent-api python /app/scripts/smoke_agent_api.py --base-url http://localhost:8000 \
+     --user lakhan --question "List my databases" --propose-snapshot my-tagged-db
+   ```
+
+   It prints the run's events and exits non-zero if the run fails. It is not part of the test suite.
+7. The **fleet panel is still mock data** until part 4 (health-analytics); only Chat and the change-request
+   proposals come from agent-api.
+
+### Running agent-api on ECS (or EKS)
+
+- **Credentials:** attach `services/agent_api/iam-policy.json` to the **task role** and do **not** set
+  `AWS_PROFILE` (a profile missing from the container makes boto3 fail instead of using the role). The task role
+  reaches both agent-api and the MCP server process it starts. Avoid relying on an EC2 instance profile: it is the
+  host's role, shared by every task on that host. On EKS, use IRSA or Pod Identity the same way.
+- **Proxy:** if `HTTPS_PROXY` is set, add `169.254.170.2,169.254.170.23` to `NO_PROXY` so the container credentials
+  endpoint isn't sent through the proxy.
+- **Secrets:** inject `DEEPSEEK_API_KEY` (or your provider's key) and `DBOPS_SERVICE_TOKEN` from Secrets Manager or
+  SSM Parameter Store, not as plain environment values.
+- **Everything compose provided:** a managed Postgres for `DATABASE_URL`; `users.yaml` and `prices.yaml` baked into
+  the image or mounted, at `DBOPS_USERS_FILE` / `DBOPS_PRICES_FILE`; service discovery (or Service Connect) names for
+  `MOCK_BACKEND_URL` and the frontend's `AGENT_API_URL`.
+
+Postgres tests are skipped unless you point them at a database:
+`DBOPS_TEST_PG_URL=postgresql+psycopg://user:pw@host/db uv run pytest services/agent_api/tests/test_store_postgres.py`.
+
 ## Demo users
 
 The demo password for every user is `dbops-demo`. Change the hashes in `config/users.yaml` with
@@ -53,7 +119,9 @@ The demo password for every user is `dbops-demo`. Change the hashes in `config/u
 
 | Variable | Used by | Meaning |
 |---|---|---|
-| `AGENT_API_URL`, `EXECUTOR_URL`, `HEALTH_URL` | frontend | Base URLs of the three services (all the mock for now) |
+| `AGENT_API_URL`, `EXECUTOR_URL`, `HEALTH_URL` | frontend | Base URLs of the three services (agent-api and the mock) |
+| `EXECUTOR_SIMULATED` | frontend | `true` shows the "Execution is simulated" banner on Approvals (compose sets it) |
+| `LLM_MODEL`, `LLM_API_KEY`, `LLM_API_BASE`, `DEEPSEEK_API_KEY` (or another provider's key), `AWS_PROFILE`, `AWS_MCP_MODE`, `AWS_MCP_ENDPOINT`, `DBOPS_SCOPE_TAG_KEY`, `DBOPS_SCOPE_TAG_VALUE`, `DBOPS_AWS_REGIONS` | agent-api | See Part 2 and `.env.example` |
 | `DBOPS_SERVICE_TOKEN` | all | Shared secret sent as `X-DBOps-Service-Token` |
 | `DBOPS_USERS_FILE` | all | Path to `users.yaml` (default `/config/users.yaml`) |
 | `MOCK_TIME_SCALE` | mock | `1.0` for realistic delays, `0` to make runs and changes finish instantly |

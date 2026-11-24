@@ -1,4 +1,4 @@
-# Part 1: frontend + mock backend. Later parts replace mock-backend with agent-api, executor and health-analytics.
+# Part 2: frontend, agent-api (+ Postgres) and the mock backend. Later parts add the executor and health-analytics.
 name: db-ops
 
 services:
@@ -20,15 +20,73 @@ services:
       timeout: 3s
       retries: 10
 
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: dbops
+      POSTGRES_PASSWORD: dbops
+      POSTGRES_DB: dbops
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbops -d dbops"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  agent-api:
+    build:
+      context: .
+      dockerfile: services/agent_api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://dbops:dbops@postgres:5432/dbops
+      # LiteLLM model string; agent-api refuses to start if the provider's key is missing.
+      LLM_MODEL: ${LLM_MODEL:-deepseek/deepseek-chat}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_API_BASE: ${LLM_API_BASE:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DBOPS_SCOPE_TAG_KEY: ${DBOPS_SCOPE_TAG_KEY:-dbops:demo}
+      DBOPS_SCOPE_TAG_VALUE: ${DBOPS_SCOPE_TAG_VALUE:-true}
+      DBOPS_AWS_REGIONS: ${DBOPS_AWS_REGIONS:-us-east-1}
+      AWS_MCP_ENDPOINT: ${AWS_MCP_ENDPOINT:-https://aws-mcp.us-east-1.api.aws/mcp}
+      AWS_MCP_MODE: ${AWS_MCP_MODE:-self-hosted}
+      AWS_PROFILE: ${AWS_PROFILE:?set AWS_PROFILE in .env}
+      MOCK_BACKEND_URL: http://mock-backend:8000
+      DBOPS_USERS_FILE: /config/users.yaml
+      DBOPS_PRICES_FILE: /config/prices.yaml
+      DBOPS_SERVICE_TOKEN: ${DBOPS_SERVICE_TOKEN:?set DBOPS_SERVICE_TOKEN in .env}
+    volumes:
+      - ./config/users.yaml:/config/users.yaml:ro
+      - ./services/agent_api/prices.yaml:/config/prices.yaml:ro
+      - ~/.aws:/root/.aws
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-backend:
+        condition: service_healthy
+
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
     environment:
-      AGENT_API_URL: http://mock-backend:8000
+      AGENT_API_URL: http://agent-api:8000
       EXECUTOR_URL: http://mock-backend:8000
       HEALTH_URL: http://mock-backend:8000
       DBOPS_USERS_FILE: /config/users.yaml
+      EXECUTOR_SIMULATED: "true"
       DBOPS_SERVICE_TOKEN: ${DBOPS_SERVICE_TOKEN:?set DBOPS_SERVICE_TOKEN in .env}
     volumes:
       - ./config/users.yaml:/config/users.yaml:ro
@@ -37,3 +95,8 @@ services:
     depends_on:
       mock-backend:
         condition: service_healthy
+      agent-api:
+        condition: service_healthy
+
+volumes:
+  pgdata:

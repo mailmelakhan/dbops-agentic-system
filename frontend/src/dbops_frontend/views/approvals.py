@@ -4,6 +4,7 @@ import streamlit as st
 
 from dbops_frontend.api.base import ApiError, ServiceUnavailable
 from dbops_frontend.clients import agent_client, executor_client
+from dbops_frontend.config import load_settings
 from dbops_frontend.format import cr_title, diff_html, escape_md, md_inline, plain_error, status_label
 from dbops_frontend.permissions import (
     can_cancel,
@@ -215,6 +216,8 @@ def _in_progress() -> None:
 
 def render() -> None:
     st.header("Approvals")
+    if load_settings().executor_simulated:
+        st.info("Execution is simulated: approving a change does not touch AWS yet.")
     if "approvals_next_view" in st.session_state:
         st.session_state["approvals_view"] = st.session_state.pop("approvals_next_view")
     st.session_state.setdefault("approvals_view", "Pending")
