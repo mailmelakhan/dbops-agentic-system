@@ -1,4 +1,4 @@
-# Hardcoded demo users (spec §5). Demo password for all: dbops-demo
+# Hardcoded test users (spec §5). Password for all: dbops-demo
 users:
   - username: lakhan
     display_name: Lakhan

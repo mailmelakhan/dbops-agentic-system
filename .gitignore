@@ -4,3 +4,6 @@ __pycache__/
 .ruff_cache/
 .superpowers/
 .env
+docs/superpowers/.DS_Store
+.DS_Store
+**/.DS_Store

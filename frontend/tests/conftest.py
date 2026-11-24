@@ -15,7 +15,7 @@ USERS = [("lakhan", "PRIVILEGED"), ("ankit", "PRIVILEGED"), ("geeta", "SAFE-WRIT
 
 @pytest.fixture
 def users_file(tmp_path):
-    """All four demo users; every password is "pw"."""
+    """All four test users; every password is "pw"."""
     h = bcrypt.hashpw(b"pw", bcrypt.gensalt(4)).decode()
     users = [{"username": u, "display_name": u.title(), "role": r, "password_hash": h} for u, r in USERS]
     path = tmp_path / "users.yaml"
