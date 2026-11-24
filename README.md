@@ -8,7 +8,7 @@ This repository currently holds **part 1 of 4** (see the [design spec](docs/supe
 | Path | What it is |
 |---|---|
 | `contracts/` | OpenAPI 3.1 contracts for `agent-api`, `executor` and `health-analytics` |
-| `config/users.yaml` | The hardcoded demo users (bcrypt hashes) |
+| `config/users.yaml` | The hardcoded test users (bcrypt hashes) |
 | `mock_backend/` | A FastAPI mock that implements all three contracts in memory |
 | `frontend/` | The Streamlit app: Chat, Approvals, Audit & reports, with a fleet health panel on every page |
 
@@ -43,7 +43,7 @@ cd frontend && DBOPS_USERS_FILE=../config/users.yaml DBOPS_SERVICE_TOKEN=dev \
   uv run streamlit run app.py
 ```
 
-## Part 2: agent-api
+## Agent Api
 
 `agent-api` runs the chat agent (DeepSeek by default, through the Strands SDK and LiteLLM) against your real AWS account, read-only, and
 keeps conversations in Postgres. Change requests, audit and reports are still served by the mock backend, and
@@ -81,7 +81,7 @@ approving a change does **not** touch AWS yet (Approvals shows an "Execution is 
    image (`uv tool install`), so nothing is downloaded at run time; the container still needs internet access to
    reach AWS and DeepSeek. Every AWS command is sent with an explicit `--region` (the first entry of
    `DBOPS_AWS_REGIONS` unless the command names one).
-6. **Smoke script.** With the stack up, run it once against your real account before a demo:
+6. **Smoke script.** With the stack up, run it once against your real account:
 
    ```bash
    docker compose exec agent-api python /app/scripts/smoke_agent_api.py --base-url http://localhost:8000 \
@@ -109,12 +109,12 @@ approving a change does **not** touch AWS yet (Approvals shows an "Execution is 
 Postgres tests are skipped unless you point them at a database:
 `DBOPS_TEST_PG_URL=postgresql+psycopg://user:pw@host/db uv run pytest services/agent_api/tests/test_store_postgres.py`.
 
-## Demo users
+## Test users
 
-The demo password for every user is `dbops-demo`. Change the hashes in `config/users.yaml` with
+The password for every test user is `dbops-demo`. Change the hashes in `config/users.yaml` with
 `uv run python scripts/hash_password.py` before showing this to anyone outside your machine.
 
-| User | Role | Use in the demo |
+| User | Role | Usecases |
 |---|---|---|
 | `lakhan` | PRIVILEGED | approver |
 | `ankit` | PRIVILEGED | DBA lead; requests resizes (shows the no-self-approval rule) |
@@ -132,7 +132,7 @@ The demo password for every user is `dbops-demo`. Change the hashes in `config/u
 | `DBOPS_USERS_FILE` | all | Path to `users.yaml` (default `/config/users.yaml`) |
 | `MOCK_TIME_SCALE` | mock | `1.0` for realistic delays, `0` to make runs and changes finish instantly |
 
-## Mock behaviour worth knowing for a demo
+## Mock behaviour worth knowing
 
 - Chat messages containing `snapshot`, `tag`, `restore` or `resize` propose that change (if your role allows it);
   `fail` makes the run fail; anything else gets a read-only answer with two tool calls.
